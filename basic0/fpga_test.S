@@ -49,6 +49,7 @@ write_cell:
   or t0, t0, t1
   sd t0, 8(a0)
 
+  ret
 
 /* Sets up ptable with three mappings, two user secdivs (0, 1 and 2):
  * - Data cell (ro) (Why? because why not? just to test faults perhaps)
@@ -135,6 +136,8 @@ setup_ptable:
   li t2, 0xcb
   sb t2, 2(t2)
 
+  ret
+
 vm_init:
   call setup_ptable
   
@@ -157,10 +160,9 @@ vm_init:
   srli t1, t1, 12
   or t0, t0, t1
   csrw satp, t0
-  sfence.vma
-  
+  sfence.vma  
 1:
   nop
-
+  ret
 
 
