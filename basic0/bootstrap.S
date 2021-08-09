@@ -1,3 +1,5 @@
+#include "test.h"
+
 #define SATP_MODE 0xf
 #define RAM_SIZE 0x200000
 
@@ -16,7 +18,8 @@ text_start_addr:
 _entry:
   call vm_init
   call stack_init
-
+  
+  call test
   
 
 exception_handler:
