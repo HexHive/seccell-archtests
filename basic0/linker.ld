@@ -12,10 +12,10 @@ SECTIONS
 {
   . = 0x80000000;
   .data : {
-    fpga_test.o(.data)
+    *.o(.data)
   }
   . = 0x80004000;
   .text : {
-    fpga_test.o(.text)
+    *.o(.text)
   }
 }

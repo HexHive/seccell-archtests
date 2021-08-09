@@ -15,6 +15,9 @@ text_start_addr:
 
 _entry:
   call vm_init
+  call stack_init
+
+  
 
 exception_handler:
   nop
@@ -165,4 +168,16 @@ vm_init:
   nop
   ret
 
+stack_init:
+  la t0, ptable
+  /* RAM_SIZE 0x200000 */
+  li t1, 0x200000
+  add t0, t0, t1
+
+  /* Reserve a token 16B at the top of the RAM,
+   * and denote the rest as stack */
+  add t0, t0, -16
+  mv sp, t0
+  
+  ret  
 

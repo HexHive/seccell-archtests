@@ -3,12 +3,12 @@ LD=riscv64-unknown-elf-ld
 
 all: fpga_test
 
-fpga_test: fpga_test.o linker.ld
-	$(LD) -o fpga_test -T linker.ld fpga_test.o
+fpga_test: bootstrap.o linker.ld
+	$(LD) -o fpga_test -T linker.ld bootstrap.o
 
-fpga_test.o: fpga_test.S
-	$(AS) -o fpga_test.o fpga_test.S
+bootstrap.o: bootstrap.S
+	$(AS) -o bootstrap.o bootstrap.S
 
 .PHONY: clean
 clean:
-	rm -f fpga_test.o fpga_test
+	rm -f bootstrap.o fpga_test
