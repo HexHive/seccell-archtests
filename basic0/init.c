@@ -1,5 +1,6 @@
 #include <inttypes.h>
 
+#include "common.h"
 #include "init.h"
 #include "util.h"
 
@@ -49,30 +50,41 @@ void setup_vm(void) {
   va_start = pa + VA_OFFSET;
   va_end = va_start + 0x4000;
   write_cell((uint64_t *)&ptable[0x10], va_start, va_end, pa);
+  cells[0].va_start = va_start;
+  cells[0].va_end = va_end;  
+  cells[0].pa = pa;
 
   /* Setup second cell: VA=0x1 8002 4000, PA=.text, size=0x4000 */
   pa       += 0x4000;
   va_start += 0x4000;
   va_end   += 0x4000;
   write_cell((uint64_t *)&ptable[0x20], va_start, va_end, pa);
+  cells[1].va_start = va_start;
+  cells[1].va_end = va_end;  
+  cells[1].pa = pa;
 
   /* Setup third cell: VA=0x1 8000 8000, PA=.remaining, size=0x1d 8000 */
   pa       += 0x4000;
   va_start += 0x4000;
   va_end = (uint64_t)ptable - BIOS_SIZE + RAM_SIZE + VA_OFFSET;
   write_cell((uint64_t *)&ptable[0x30], va_start, va_end, pa);
+  cells[2].va_start = va_start;
+  cells[2].va_end = va_end;  
+  cells[2].pa = pa;
 
   uint8_t *perms = ptable + (16 * 64);
   /* Permissions for supervisor: rwx (cf), r-x (cb), rwx (cf) */
-  *(perms + (0 * 64) + 1) = 0xcf;
-  *(perms + (0 * 64) + 2) = 0xcb;
-  *(perms + (0 * 64) + 3) = 0xcf;
+  cperms[0][0] = *(perms + (0 * 64) + 1) = 0xcf;
+  cperms[0][1] = *(perms + (0 * 64) + 2) = 0xcb;
+  cperms[0][2] = *(perms + (0 * 64) + 3) = 0xcf;
   /* Permissions for secdiv SD1: r-- (c3), r-x (cb), rw- (c7) */
-  *(perms + (1 * 64) + 1) = 0xc3;
-  *(perms + (1 * 64) + 2) = 0xcb;
-  *(perms + (1 * 64) + 3) = 0xc7;
+  cperms[1][0] = *(perms + (1 * 64) + 1) = 0xc3;
+  cperms[1][1] = *(perms + (1 * 64) + 2) = 0xcb;
+  cperms[1][2] = *(perms + (1 * 64) + 3) = 0xc7;
   /* Permissions for secdiv SD2: --- (c1), r-x (cb), --- (c1) */
-  *(perms + (2 * 64) + 1) = 0xc1;
-  *(perms + (2 * 64) + 2) = 0xcb;
-  *(perms + (2 * 64) + 3) = 0xc1;
+  cperms[2][0] = *(perms + (2 * 64) + 1) = 0xc1;
+  cperms[2][1] = *(perms + (2 * 64) + 2) = 0xcb;
+  cperms[2][2] = *(perms + (2 * 64) + 3) = 0xc1;
+
+  
 }
