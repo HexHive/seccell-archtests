@@ -1,7 +1,7 @@
 AS=riscv64-unknown-elf-as
 LD=riscv64-unknown-elf-ld
 CC=riscv64-unknown-elf-gcc
-CFLAGS=-g -fPIC -O3
+CFLAGS=-g -fPIC -O3 -fno-builtin
 ASFLAGS=-g
 
 .PHONY: ALL

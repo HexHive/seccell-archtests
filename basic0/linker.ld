@@ -13,6 +13,7 @@ SECTIONS
 {
   . = 0x80020000;
   .bss : {
+    init.o(.bss)
     *.o(.bss)
   }
   . = 0x80024000;
