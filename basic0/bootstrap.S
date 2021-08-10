@@ -2,6 +2,7 @@
 
 #define SATP_MODE 0xf
 #define RAM_SIZE 0x200000
+#define BOOT_SIZE 0x20000
 
 /****************** Initial data section ******************/
 .data

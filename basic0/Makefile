@@ -1,6 +1,8 @@
 AS=riscv64-unknown-elf-as
 LD=riscv64-unknown-elf-ld
 CC=riscv64-unknown-elf-gcc
+CFLAGS=-g -fPIC 
+ASFLAGS=-g
 
 all: fpga_test
 
@@ -9,8 +11,9 @@ fpga_test: bootstrap.o test.o linker.ld
 
 test.o: test.c test.h
 
-bootstrap.o: bootstrap.S test.h
-	$(AS) -o bootstrap.o bootstrap.S
+bootstrap.s: bootstrap.S test.h
+
+bootstrap.o: bootstrap.s
 
 .PHONY: clean
 clean:
