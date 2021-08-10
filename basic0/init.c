@@ -1,18 +1,13 @@
 #include <inttypes.h>
 
 #include "init.h"
+#include "util.h"
 
 #define VA_OFFSET 0x100000000ul
 #define BIOS_SIZE 0x20000
 #define RAM_SIZE  0x200000
 
 uint8_t ptable[0x1000];
-
-static 
-void mymemset(uint8_t *addr, uint8_t c, int n) {
-  while(n-- > 0) 
-    *addr++ = c;
-}
 
 static 
 void _write_cell(uint64_t *addr, uint64_t deleted, uint64_t valid, uint64_t ppn,
@@ -39,7 +34,7 @@ void write_cell(uint64_t *addr, uint64_t va, uint64_t va_end, uint64_t pa) {
 
 /* setup_vm operates in PA space */
 void setup_vm(void) {
-  mymemset(ptable, 0, sizeof(ptable));
+  memset(ptable, 0, sizeof(ptable));
 
   // Set N = 4, M = 3, T = 1
   uint32_t *ptable_meta = (uint32_t *) ptable;
