@@ -68,4 +68,8 @@ void test(void) {
 
   mistakes += sccount_tests();
 
+  if(mistakes)
+    wrong();
+  else
+    correct();
 }
