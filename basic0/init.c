@@ -55,22 +55,22 @@ void setup_vm(void) {
   pa = (uint64_t)ptable;
   va_start = pa + VA_OFFSET;
   va_end = va_start + 0x4000;
-  write_cell((uint64_t *)&ptable[0x10], va_start, va_end, pa);
-  set_cell(0, va_start, va_end, pa);
+  write_cell((uint64_t *)&ptable[0x10], va_start, va_end - 1, pa);
+  set_cell(0, va_start, va_end - 1, pa);
 
   /* Setup second cell: VA=0x1 8002 4000, PA=.text, size=0x4000 */
   pa       += 0x4000;
   va_start += 0x4000;
   va_end   += 0x4000;
-  write_cell((uint64_t *)&ptable[0x20], va_start, va_end, pa);
-  set_cell(1, va_start, va_end, pa);
+  write_cell((uint64_t *)&ptable[0x20], va_start, va_end - 1, pa);
+  set_cell(1, va_start, va_end - 1, pa);
 
   /* Setup third cell: VA=0x1 8000 8000, PA=.remaining, size=0x1d 8000 */
   pa       += 0x4000;
   va_start += 0x4000;
   va_end = (uint64_t)ptable - BIOS_SIZE + RAM_SIZE + VA_OFFSET;
-  write_cell((uint64_t *)&ptable[0x30], va_start, va_end, pa);
-  set_cell(2, va_start, va_end, pa);
+  write_cell((uint64_t *)&ptable[0x30], va_start, va_end - 1, pa);
+  set_cell(2, va_start, va_end - 1, pa);
 
   uint8_t *perms = ptable + (16 * 64);
   /* Permissions for supervisor: rwx (cf), r-x (cb), rwx (cf) */

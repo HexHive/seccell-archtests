@@ -49,10 +49,10 @@ int sccount_tests() {
   for(int cidx = 0; cidx < N_CELLS; cidx++) {
     int rcount = 0, wcount = 0, xcount = 0;
 
-    for(int sdidx = 0; sdidx < M_SDS; sdidx++){
-      if(cperms[sdidx][cidx] & RT_R == RT_R) rcount++;
-      if(cperms[sdidx][cidx] & RT_W == RT_W) wcount++;
-      if(cperms[sdidx][cidx] & RT_X == RT_X) xcount++;
+    for(int sdidx = 1; sdidx < M_SDS; sdidx++){
+      if((cperms[sdidx][cidx] & RT_R) == RT_R) rcount++;
+      if((cperms[sdidx][cidx] & RT_W) == RT_W) wcount++;
+      if((cperms[sdidx][cidx] & RT_X) == RT_X) xcount++;
     }
 
     CHECK(SCCount(cells[cidx].va_start, RT_R) == rcount);
