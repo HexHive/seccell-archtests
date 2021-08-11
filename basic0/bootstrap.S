@@ -30,6 +30,8 @@ _entry:
   li t1, 0x100000000 # VM offset
   add t0, t0, t1
   csrw stvec, t0
+  li t0, 0
+  csrw usid, t0
   li t0, 0xf         # SATP_MODE 0xf 
   slli t0, t0, 60
   la t1, ptable
@@ -42,11 +44,16 @@ _entry:
   la t0, exception_handler
   csrw stvec, t0
   # Fix stack pointer
-  li t1, 0x100000000 # VM offset
-  add sp, sp, t1
+  li t0, 0x100000000 # VM offset
+  add sp, sp, t0
 
-
-  call test
+  # Drop into test as user with SD1
+  la t0, test
+  csrw sepc, t0
+  li t0, 1
+  csrw urid, t0
+drop_to_test:
+  sret
 
 exception_handler:
   j exception_handler
