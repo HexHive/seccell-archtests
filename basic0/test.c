@@ -2,10 +2,29 @@
 #include "test.h"
 #include "seccell.h"
 
+struct cell {
+  uint64_t va_start, va_end, pa;
+};
+
+
 #define N_CELLS 3
 #define M_SDS   3
-struct cell cells[N_CELLS];
-uint8_t cperms[M_SDS][N_CELLS];
+static struct cell cells[N_CELLS];
+static uint8_t cperms[M_SDS][N_CELLS];
+
+
+/******************************************
+ * Setup functions
+ *****************************************/
+void set_cell(int cidx, uint64_t va_start, uint64_t va_end, uint64_t pa) {
+  cells[cidx].va_start = va_start;
+  cells[cidx].va_end = va_end;
+  cells[cidx].pa = pa;
+}
+
+void set_cell_perm(int sdidx, int cidx, uint8_t perm) {
+  cperms[sdidx][cidx] = perm;
+}
 
 #define CHECK(x) \
   if (!(x)) {    \
