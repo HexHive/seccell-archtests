@@ -205,7 +205,15 @@ void trap_sccount_perm_exception_handler(void) {
                    && (ctx.scause == RISCV_EXCP_ILLEGAL_INST)
                    && (sccount_test_value == 0)
                    && (sccount_test_value2 == 0);
-  /* TODO: Add check on stval for permission */
+
+  /* Loading from invalid perms only if other conditions are met,
+   * particularly that the index in the array will be valid */
+  if(condition) {
+    uint8_t test_perm = invalid_perms_parameters[sccount_test_id - 8];
+    uint64_t expected_stval = (((test_perm == 0)? 1: 0) << 8)
+                              | test_perm;
+    condition = ctx.stval == expected_stval;
+  }
 
   if(!condition)
     trap_mistakes += 1;
@@ -241,7 +249,11 @@ void trap_sccount_addr_exception_handler(void) {
                    && (ctx.scause == RISCV_EXCP_LOAD_PAGE_FAULT)
                    && (sccount_test_value == 0)
                    && (sccount_test_value2 == 0);
-  /* TODO: Add check on stval for permission */
+
+  /* Loading from invalid address only if other conditions are met,
+   * particularly that the index in the array will be valid */
+  if(condition)
+    condition == (ctx.stval == invalid_addresses[sccount_test_id - 16]);
 
   if(!condition)
     trap_mistakes += 1;
