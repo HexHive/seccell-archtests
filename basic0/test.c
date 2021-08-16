@@ -42,8 +42,9 @@ struct context {
 	uint64_t t6;
 	/* Supervisor/Machine CSRs */
 	uint64_t status;
-	uint64_t badaddr;
-	uint64_t cause;
+	uint64_t sepc;
+	uint64_t scause;
+  uint64_t stval;
   uint64_t urid;
   uint64_t uxid;
 };
@@ -101,10 +102,10 @@ void trap_sccount_perm_exception_handler(void);
 void trap_sccount_addr_exception_handler(void);
 
 void trap_skip_inst(void) {
-  if(ctx.badaddr == SPECIAL_TRAP_ADDR) {
+  if(ctx.sepc == SPECIAL_TRAP_ADDR) {
     /* This case is used by the raise trap mechanism
      * The return address holds the next valid inst */
-    ctx.badaddr = ctx.ra;
+    ctx.sepc = ctx.ra;
   } else {
     /* Set MXR in sstatus to enable read of the instruction */
     uint64_t sstatus;
@@ -116,11 +117,11 @@ void trap_skip_inst(void) {
           :);
 
     /* Different skip lengths based on compressed or not */
-    uint16_t inst = *(uint16_t *)ctx.badaddr;
+    uint16_t inst = *(uint16_t *)ctx.sepc;
     if((inst & 0x3) == 0x3) 
-      ctx.badaddr += 4;
+      ctx.sepc += 4;
     else
-      ctx.badaddr += 2;
+      ctx.sepc += 2;
 
     /* Reset MXR in sstatus */
     asm("csrw sstatus, %[sstatus]"
@@ -201,7 +202,7 @@ void trap_sccount_perm_exception_handler(void) {
 
   bool condition = (sccount_test_id >= 8) 
                    && (sccount_test_id < (8 + sizeof(invalid_perms_parameters)))
-                   && (ctx.cause == RISCV_EXCP_ILLEGAL_INST)
+                   && (ctx.scause == RISCV_EXCP_ILLEGAL_INST)
                    && (sccount_test_value == 0)
                    && (sccount_test_value2 == 0);
   /* TODO: Add check on stval for permission */
@@ -237,7 +238,7 @@ void trap_sccount_addr_exception_handler(void) {
 
   bool condition = (sccount_test_id >= 16) 
                    && (sccount_test_id < (16 + sizeof(invalid_addresses)/sizeof(invalid_addresses[0])))
-                   && (ctx.cause == RISCV_EXCP_LOAD_PAGE_FAULT)
+                   && (ctx.scause == RISCV_EXCP_LOAD_PAGE_FAULT)
                    && (sccount_test_value == 0)
                    && (sccount_test_value2 == 0);
   /* TODO: Add check on stval for permission */

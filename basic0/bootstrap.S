@@ -101,20 +101,22 @@ exception_handler:
   sd t0, 264(tp)
   csrr t0, scause
   sd t0, 272(tp)
-  csrr t0, urid
+  csrr t0, stval
   sd t0, 280(tp)
-  csrr t0, uxid
+  csrr t0, urid
   sd t0, 288(tp)
+  csrr t0, uxid
+  sd t0, 296(tp)
+
   call c_trap_handler
+  
   ld t0, 256(tp)
   csrw sstatus, t0
   ld t0, 264(tp)
   csrw sepc, t0
-  ld t0, 272(tp)
-  csrw scause, t0
-  ld t0, 280(tp)
-  csrw urid, t0
   ld t0, 288(tp)
+  csrw urid, t0
+  ld t0, 296(tp)
   csrw uxid, t0
   ld x1, 8(tp)
   ld x3, 24(tp)
