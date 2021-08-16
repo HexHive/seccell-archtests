@@ -6,4 +6,4 @@
   do {                                                      \
     void (*trap)(void) = (void (*)(void))SPECIAL_TRAP_ADDR; \
     trap();                                                 \
-  } while(0);
+  } while(0)

@@ -165,7 +165,7 @@ uint64_t SCCount(uint64_t addr, uint8_t perm) {
 }
 
 /******************************************
- * Tests for SCcount instruction
+ * Tests for SCCount instruction
  *****************************************/
 static uint64_t sccount_test_id, sccount_test_value, sccount_test_value2;
 static uint64_t sccount_handler_ack;
@@ -174,6 +174,7 @@ static uint64_t sccount_handler_ack;
 /* Testing correctness of sccount instructions for legal operands */
 int sccount_test_correctness() {
   int mistakes = 0;
+  trap_id = INVALID_CAUSE;
 
   for(int cidx = 0; cidx < N_CELLS; cidx++) {
     int rcount = 0, wcount = 0, xcount = 0;
@@ -295,7 +296,45 @@ int sccount_tests() {
 
 
 
+/******************************************
+ * Tests for SDSwitch instruction
+ *****************************************/
 
+int sdswitch_test_functionality() {
+  int mistakes = 0;
+  trap_id = INVALID_CAUSE;
+  uint64_t tgt_usid;
+
+  /* Start at SD 1, switch to SD 2, then back to SD 1 */
+  CHECK(get_usid() == 1);
+  set_urid(2);
+  CHECK(get_usid() == 1);
+  CHECK(get_urid() == 2);
+  
+  tgt_usid = 2;
+  jals(tgt_usid, sdswitch_test_functionality0);
+  nop(5);
+  entry(sdswitch_test_functionality0);
+  CHECK(get_usid() == 2);
+  CHECK(get_urid() == 1);
+
+  tgt_usid = 1;
+  jals(tgt_usid, sdswitch_test_functionality1);
+  nop(2);
+  entry(sdswitch_test_functionality1);
+  CHECK(get_usid() == 1);
+  CHECK(get_urid() == 2);
+
+  return mistakes;
+}
+
+int sdswitch_tests() {
+  int sdswitch_mistakes = 0;
+
+  sdswitch_mistakes += sdswitch_test_functionality();
+
+  return sdswitch_mistakes;
+}
 
 /******************************************
  * Tests Suite
@@ -318,6 +357,7 @@ void test(void) {
 
   /* Begin actual testing */
   mistakes += sccount_tests();
+  mistakes += sdswitch_tests();
 
   if(mistakes)
     wrong();

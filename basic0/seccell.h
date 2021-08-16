@@ -14,10 +14,50 @@
 #define RISCV_EXCP_LOAD_PAGE_FAULT               0xd 
 #define RISCV_EXCP_STORE_PAGE_FAULT              0xf 
 
+static inline 
+void set_urid(uint64_t urid) {
+   asm("csrw urid, %[urid]"
+      :: [urid] "r" (urid)
+      :);
+}
+
+static inline 
+uint64_t get_urid(void) {
+   uint64_t urid;
+   asm("csrr %[urid], urid"
+      : [urid] "=r" (urid)
+      ::);
+   return urid;
+}
+
+static inline 
+void set_usid(uint64_t usid) {
+   asm("csrw usid, %[usid]"
+      :: [usid] "r" (usid)
+      :);
+}
+
+static inline 
+uint64_t get_usid(void) {
+   uint64_t usid;
+   asm("csrr %[usid], usid"
+      : [usid] "=r" (usid)
+      ::);
+   return usid;
+}
+
 /* Macros for assembly instructions */
 /* Note: even though some of the instructions could be wrapped into static inline functions, macros were deliberately
    chosen to have unified calling conventions (similar to actual assembly instruction syntax). This is not very good
    software engineering practice and should be reworked in the future. */
+#define nop(N)            \
+   do {                   \
+      asm(".rept " #N ";" \
+          "nop;"          \
+          ".endr"         \
+          :::);           \
+   } while(0)
+
 #define entry(label)       \
    do {                    \
       asm (                \
