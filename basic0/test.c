@@ -270,6 +270,7 @@ int sccount_tests() {
 
   sccount_mistakes += sccount_test_correctness();
   sccount_mistakes += sccount_exception_perms();
+  sccount_mistakes += sccount_exception_addr();
 
   return sccount_mistakes;
 }
