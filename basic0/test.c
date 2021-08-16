@@ -102,12 +102,30 @@ void trap_sccount_addr_exception_handler(void);
 
 void trap_skip_inst(void) {
   if(ctx.badaddr == SPECIAL_TRAP_ADDR) {
-    // This case is used by the raise trap mechanism
-    // The return address holds the next valid inst
+    /* This case is used by the raise trap mechanism
+     * The return address holds the next valid inst */
     ctx.badaddr = ctx.ra;
   } else {
-    //TODO: Determine compressed or not
-    ctx.badaddr += 4;
+    /* Set MXR in sstatus to enable read of the instruction */
+    uint64_t sstatus;
+    asm("csrr %[sstatus], sstatus;"
+          : [sstatus] "=r" (sstatus)
+          ::);
+    asm("csrw sstatus, %[sstatus]"
+          :: [sstatus] "r" (sstatus | (0x1 << 19))
+          :);
+
+    /* Different skip lengths based on compressed or not */
+    uint16_t inst = *(uint16_t *)ctx.badaddr;
+    if((inst & 0x3) == 0x3) 
+      ctx.badaddr += 4;
+    else
+      ctx.badaddr += 2;
+
+    /* Reset MXR in sstatus */
+    asm("csrw sstatus, %[sstatus]"
+          :: [sstatus] "r" (sstatus)
+          :);
   }
 }
 
