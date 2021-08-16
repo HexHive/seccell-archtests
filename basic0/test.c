@@ -56,6 +56,7 @@ enum trap_cause {
   /* Traps for SCCOUNT testing */
   TRAP_SCCOUNT_BEGIN,
   TRAP_SCCOUNT_PERM_EXCEPTION = TRAP_SCCOUNT_BEGIN,
+  TRAP_SCCOUNT_ADDR_EXCEPTION,
   TRAP_SCCOUNT_END,
 
   TRAP_COUNT
@@ -97,6 +98,7 @@ void setup_trap_handler(void) {
       :: [ctx] "r" (&ctx));
 }
 void trap_sccount_perm_exception_handler(void);
+void trap_sccount_addr_exception_handler(void);
 
 void trap_skip_inst(void) {
   if(ctx.badaddr == SPECIAL_TRAP_ADDR) {
@@ -119,6 +121,11 @@ void c_trap_handler(void) {
   
   case TRAP_SCCOUNT_PERM_EXCEPTION:
     trap_sccount_perm_exception_handler();
+    trap_skip_inst();
+    break;
+
+  case TRAP_SCCOUNT_ADDR_EXCEPTION:
+    trap_sccount_addr_exception_handler();
     trap_skip_inst();
     break;
 
@@ -202,6 +209,42 @@ int sccount_exception_perms() {
 
   return mistakes;
 }
+
+/* Testing exceptioons for sccount with invalid addresses */
+static uint64_t invalid_addresses[] = {
+    0x0, 0xf1f1d0d0
+  };
+void trap_sccount_addr_exception_handler(void) {
+  sccount_handler_ack = SCCOUNT_HANDLER_ACK_SPECIAL;
+
+  bool condition = (sccount_test_id >= 16) 
+                   && (sccount_test_id < (16 + sizeof(invalid_addresses)/sizeof(invalid_addresses[0])))
+                   && (ctx.cause == RISCV_EXCP_LOAD_PAGE_FAULT)
+                   && (sccount_test_value == 0)
+                   && (sccount_test_value2 == 0);
+  /* TODO: Add check on stval for permission */
+
+  if(!condition)
+    trap_mistakes += 1;
+}
+int sccount_exception_addr() {
+  int mistakes = 0;
+  trap_id = TRAP_SCCOUNT_ADDR_EXCEPTION;
+
+  for(uint8_t i = 0; i < sizeof(invalid_addresses)/sizeof(invalid_addresses[0]); i++) {
+    trap_mistakes = 0;
+    sccount_test_id = 16 + i;
+    sccount_test_value = 0;
+    sccount_test_value2 = 0;
+    sccount_handler_ack = 0;
+    SCCount(invalid_addresses[i], RT_R);
+
+    CHECK(!trap_mistakes && (sccount_handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
+  }
+
+  return mistakes;
+}
+
 
 int sccount_tests() {
   int sccount_mistakes = 0;
