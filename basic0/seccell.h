@@ -3,6 +3,17 @@
 #define RT_W 0b00000100     /* 0x4 */
 #define RT_X 0b00001000     /* 0x8 */
 
+/* Exceptions */
+#define RISCV_EXCP_INST_ACCESS_FAULT             0x1
+#define RISCV_EXCP_ILLEGAL_INST                  0x2
+//...
+#define RISCV_EXCP_LOAD_ADDR_MIS                 0x4
+#define RISCV_EXCP_LOAD_ACCESS_FAULT             0x5
+//...
+#define RISCV_EXCP_INST_PAGE_FAULT               0xc 
+#define RISCV_EXCP_LOAD_PAGE_FAULT               0xd 
+#define RISCV_EXCP_STORE_PAGE_FAULT              0xf 
+
 /* Macros for assembly instructions */
 /* Note: even though some of the instructions could be wrapped into static inline functions, macros were deliberately
    chosen to have unified calling conventions (similar to actual assembly instruction syntax). This is not very good

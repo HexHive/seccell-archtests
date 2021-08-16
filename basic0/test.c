@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include "common.h"
 #include "test.h"
 #include "seccell.h"
@@ -7,7 +8,7 @@ struct cell {
 };
 
 struct context {
-	uint64_t epc;
+	uint64_t unused;
 	uint64_t ra;
 	uint64_t sp;
 	uint64_t gp;
@@ -52,6 +53,11 @@ enum trap_cause {
 
   TRAP_TEST = 0,
 
+  /* Traps for SCCOUNT testing */
+  TRAP_SCCOUNT_BEGIN,
+  TRAP_SCCOUNT_PERM_EXCEPTION = TRAP_SCCOUNT_BEGIN,
+  TRAP_SCCOUNT_END,
+
   TRAP_COUNT
 };
 
@@ -90,6 +96,7 @@ void setup_trap_handler(void) {
   asm("csrw sscratch, %[ctx]"
       :: [ctx] "r" (&ctx));
 }
+void trap_sccount_perm_exception_handler(void);
 
 void trap_skip_inst(void) {
   if(ctx.badaddr == SPECIAL_TRAP_ADDR) {
@@ -98,7 +105,7 @@ void trap_skip_inst(void) {
     ctx.badaddr = ctx.ra;
   } else {
     //TODO: Determine compressed or not
-    ctx.badaddr += 2;
+    ctx.badaddr += 4;
   }
 }
 
@@ -110,6 +117,11 @@ void c_trap_handler(void) {
     trap_skip_inst();
     break;
   
+  case TRAP_SCCOUNT_PERM_EXCEPTION:
+    trap_sccount_perm_exception_handler();
+    trap_skip_inst();
+    break;
+
   /* Unknown/invalid causes will lead to another fault */
   case INVALID_CAUSE:
   default:
@@ -129,7 +141,12 @@ uint64_t SCCount(uint64_t addr, uint8_t perm) {
 /******************************************
  * Tests for SCcount instruction
  *****************************************/
-int sccount_tests() {
+static uint64_t sccount_test_id, sccount_test_value, sccount_test_value2;
+static uint64_t sccount_handler_ack;
+#define SCCOUNT_HANDLER_ACK_SPECIAL 0xc007
+
+/* Testing correctness of sccount instructions for legal operands */
+int sccount_test_correctness() {
   int mistakes = 0;
 
   for(int cidx = 0; cidx < N_CELLS; cidx++) {
@@ -147,6 +164,52 @@ int sccount_tests() {
   }
 
   return mistakes;
+}
+
+
+/* Testing exveptions for sccount with illegal permissions */
+static uint8_t invalid_perms_parameters[] = {
+    0x0, 0x1, 0x10, 0x20, 0x40, 0x80
+  };
+void trap_sccount_perm_exception_handler(void) {
+  sccount_handler_ack = SCCOUNT_HANDLER_ACK_SPECIAL;
+
+  bool condition = (sccount_test_id >= 8) 
+                   && (sccount_test_id < (8 + sizeof(invalid_perms_parameters)))
+                   && (ctx.cause == RISCV_EXCP_ILLEGAL_INST)
+                   && (sccount_test_value == 0)
+                   && (sccount_test_value2 == 0);
+  /* TODO: Add check on stval for permission */
+
+  if(!condition)
+    trap_mistakes += 1;
+}
+
+int sccount_exception_perms() {
+  int mistakes = 0;
+  trap_id = TRAP_SCCOUNT_PERM_EXCEPTION;
+
+  for(uint8_t i = 0; i < sizeof(invalid_perms_parameters); i++) {
+    trap_mistakes = 0;
+    sccount_test_id = 8 + i;
+    sccount_test_value = 0;
+    sccount_test_value2 = 0;
+    sccount_handler_ack = 0;
+    SCCount(cells[0].va_start, invalid_perms_parameters[i]);
+
+    CHECK(!trap_mistakes && (sccount_handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
+  }
+
+  return mistakes;
+}
+
+int sccount_tests() {
+  int sccount_mistakes = 0;
+
+  sccount_mistakes += sccount_test_correctness();
+  sccount_mistakes += sccount_exception_perms();
+
+  return sccount_mistakes;
 }
 
 
