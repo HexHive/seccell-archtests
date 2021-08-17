@@ -13,6 +13,12 @@
 #define RISCV_EXCP_INST_PAGE_FAULT               0xc 
 #define RISCV_EXCP_LOAD_PAGE_FAULT               0xd 
 #define RISCV_EXCP_STORE_PAGE_FAULT              0xf 
+//...
+#define RISCV_EXCP_SECCELL_ILL_ADDR              0x18
+#define RISCV_EXCP_SECCELL_ILL_PERM              0x19
+#define RISCV_EXCP_SECCELL_INV_SDID              0x1a
+#define RISCV_EXCP_SECCELL_INV_CELL_STATE        0x1b
+#define RISCV_EXCP_SECCELL_ILL_TGT               0x1c
 
 static inline 
 void set_urid(uint64_t urid) {

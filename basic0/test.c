@@ -176,6 +176,8 @@ int sccount_test_correctness() {
   int mistakes = 0;
   trap_id = INVALID_CAUSE;
 
+  CHECK(get_usid() == 1);
+  CHECK(get_urid() == 0);
   for(int cidx = 0; cidx < N_CELLS; cidx++) {
     int rcount = 0, wcount = 0, xcount = 0;
 
@@ -203,9 +205,11 @@ void trap_sccount_perm_exception_handler(void) {
 
   bool condition = (sccount_test_id >= 8) 
                    && (sccount_test_id < (8 + sizeof(invalid_perms_parameters)))
-                   && (ctx.scause == RISCV_EXCP_ILLEGAL_INST)
+                   && (ctx.scause == RISCV_EXCP_SECCELL_ILL_PERM)
                    && (sccount_test_value == 0)
-                   && (sccount_test_value2 == 0);
+                   && (sccount_test_value2 == 0)
+                   && (get_usid() == 0)
+                   && (get_urid() == 1);
 
   /* Loading from invalid perms only if other conditions are met,
    * particularly that the index in the array will be valid */
@@ -247,9 +251,11 @@ void trap_sccount_addr_exception_handler(void) {
 
   bool condition = (sccount_test_id >= 16) 
                    && (sccount_test_id < (16 + sizeof(invalid_addresses)/sizeof(invalid_addresses[0])))
-                   && (ctx.scause == RISCV_EXCP_LOAD_PAGE_FAULT)
+                   && (ctx.scause == RISCV_EXCP_SECCELL_ILL_ADDR)
                    && (sccount_test_value == 0)
-                   && (sccount_test_value2 == 0);
+                   && (sccount_test_value2 == 0)
+                   && (get_usid() == 0)
+                   && (get_urid() == 1);
 
   /* Loading from invalid address only if other conditions are met,
    * particularly that the index in the array will be valid */
