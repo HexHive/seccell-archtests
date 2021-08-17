@@ -11,7 +11,7 @@
 #include "test.h"
 
 #define VA_OFFSET 0x100000000ul
-#define BIOS_SIZE 0x20000
+#define BIOS_SIZE 0x40000
 #define RAM_SIZE  0x200000
 
 uint8_t ptable[0x1000];
