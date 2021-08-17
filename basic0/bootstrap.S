@@ -7,9 +7,9 @@
 _entry:
   # Setup stack
   la t0, ptable
-  li t1, 0x20000     # BIOS_SIZE 0x2000
+  li t1, BIOS_SIZE     
   sub t0, t0, t1
-  li t1, 0x200000    # RAM_SIZE 0x200000
+  li t1, RAM_SIZE    
   add t0, t0, t1
   /* Reserve a token 16B at the top of the RAM,
    * and denote the rest as stack */
@@ -27,7 +27,7 @@ _entry:
    */
   call setup_vm
   la t0, first_va_inst
-  li t1, 0x100000000 # VM offset
+  li t1, VA_OFFSET
   add t0, t0, t1
   csrw stvec, t0
   li t0, 0
@@ -46,7 +46,7 @@ first_va_inst:
   call setup_trap_handler
   mv tp, zero
   # Fix stack pointer
-  li t0, 0x100000000 # VM offset
+  li t0, VA_OFFSET
   add sp, sp, t0
 
   # Drop into test as user with SD1
