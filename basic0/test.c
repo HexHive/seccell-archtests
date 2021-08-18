@@ -306,7 +306,7 @@ int sccount_tests() {
  * Tests for SDSwitch instruction
  *****************************************/
 
-int sdswitch_test_functionality() {
+int sdswitch_test_functionality_jals() {
   int mistakes = 0;
   trap_id = INVALID_CAUSE;
   uint64_t tgt_usid;
@@ -334,10 +334,43 @@ int sdswitch_test_functionality() {
   return mistakes;
 }
 
+int sdswitch_test_functionality_jalrs() {
+  int mistakes = 0;
+  trap_id = INVALID_CAUSE;
+  uint64_t tgt_usid, tgt_addr;
+
+  /* Start at SD 1, switch to SD 2, then back to SD 1 */
+  CHECK(get_usid() == 1);
+  set_urid(2);
+  CHECK(get_usid() == 1);
+  CHECK(get_urid() == 2);
+  
+  tgt_usid = 2;
+  tgt_addr = (uint64_t)&&sdswitch_test_functionality0;
+  jalrs(tgt_usid, tgt_addr);
+  nop(5);
+sdswitch_test_functionality0:
+  entry(_sdswitch_test_functionality0);
+  CHECK(get_usid() == 2);
+  CHECK(get_urid() == 1);
+
+  tgt_usid = 1;
+  tgt_addr = (uint64_t)&&sdswitch_test_functionality1;
+  jalrs(tgt_usid, tgt_addr);
+  nop(2);
+sdswitch_test_functionality1:
+  entry(_sdswitch_test_functionality1);
+  CHECK(get_usid() == 1);
+  CHECK(get_urid() == 2);
+
+  return mistakes;
+}
+
 int sdswitch_tests() {
   int sdswitch_mistakes = 0;
 
-  sdswitch_mistakes += sdswitch_test_functionality();
+  sdswitch_mistakes += sdswitch_test_functionality_jals();
+  sdswitch_mistakes += sdswitch_test_functionality_jalrs();
 
   return sdswitch_mistakes;
 }
