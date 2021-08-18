@@ -60,6 +60,11 @@ enum trap_cause {
   TRAP_SCCOUNT_ADDR_EXCEPTION,
   TRAP_SCCOUNT_END,
 
+  TRAP_SDSWITCH_BEGIN,
+  TRAP_SDSWITCH_SDID = TRAP_SDSWITCH_BEGIN,
+  TRAP_SDSWITCH_ADDR,
+  TRAP_SDSWITCH_END,
+
   TRAP_COUNT
 };
 
@@ -100,6 +105,8 @@ void setup_trap_handler(void) {
 }
 void trap_sccount_perm_exception_handler(void);
 void trap_sccount_addr_exception_handler(void);
+void trap_sdswitch_exception_sdid(void);
+void trap_sdswitch_exception_addr(void);
 
 void trap_skip_inst(void) {
   if(ctx.sepc == SPECIAL_TRAP_ADDR) {
@@ -148,6 +155,16 @@ void c_trap_handler(void) {
     trap_skip_inst();
     break;
 
+  case TRAP_SDSWITCH_SDID:
+    trap_sdswitch_exception_sdid();
+    trap_skip_inst();
+    break;
+
+  case TRAP_SDSWITCH_ADDR:
+   trap_sdswitch_exception_addr();
+   trap_skip_inst();
+   break;
+   
   /* Unknown/invalid causes will lead to another fault */
   case INVALID_CAUSE:
   default:
@@ -294,17 +311,12 @@ int sccount_tests() {
   return sccount_mistakes;
 }
 
-
-
-
-
-
-
-
-
 /******************************************
  * Tests for SDSwitch instruction
  *****************************************/
+static uint64_t sdswitch_handler_ack;
+static uint64_t expected_stval;
+#define SDSWITCH_HANDLER_ACK_SPECIAL 0xc017
 
 int sdswitch_test_functionality_jals() {
   int mistakes = 0;
@@ -366,11 +378,113 @@ sdswitch_test_functionality1:
   return mistakes;
 }
 
+
+void trap_sdswitch_exception_sdid() {
+  sdswitch_handler_ack = SDSWITCH_HANDLER_ACK_SPECIAL;
+
+  bool condition = (ctx.scause == RISCV_EXCP_SECCELL_INV_SDID)
+                    && (ctx.stval == expected_stval)
+                    && (get_usid() == 0)
+                    && (get_urid() == 1);
+  
+  if(!condition)
+    trap_mistakes += 1;
+}
+int sdswitch_exception_sdid() {
+  int mistakes = 0;
+  trap_id = TRAP_SDSWITCH_SDID;
+  uint64_t tgt_usid, tgt_addr;
+
+  /* Try to switch to secdiv 0, and check fault */
+  CHECK(get_usid() == 1);
+  tgt_usid = 0;
+  expected_stval = 0;
+  sdswitch_handler_ack = 0;
+  trap_mistakes = 0;
+  jals(tgt_usid, sdswitch_test_exception_sdid0);
+  nop(5);
+  entry(sdswitch_test_exception_sdid0);
+  CHECK(!trap_mistakes && (sdswitch_handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+
+  /* Try to switch to secdiv 1024, and check fault */
+  CHECK(get_usid() == 1);
+  tgt_usid = 1024;
+  expected_stval = 1024;
+  sdswitch_handler_ack = 0;
+  trap_mistakes = 0;
+  jals(tgt_usid, sdswitch_test_exception_sdid1);
+  nop(3);
+  entry(sdswitch_test_exception_sdid1);
+  CHECK(!trap_mistakes && (sdswitch_handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+
+  /* Try to switch to secdiv 1024 with jalrs, and check fault */
+  CHECK(get_usid() == 1);
+  tgt_usid = 1024;
+  expected_stval = 1024;
+  tgt_addr = (uint64_t)&&sdswitch_test_exception_sdid2;
+  sdswitch_handler_ack = 0;
+  trap_mistakes = 0;
+  jalrs(tgt_usid, tgt_addr);
+  nop(7);
+sdswitch_test_exception_sdid2:
+  entry(_sdswitch_test_exception_sdid2);
+  CHECK(!trap_mistakes && (sdswitch_handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+
+  return mistakes;
+}
+
+void trap_sdswitch_exception_addr(void) {
+  sdswitch_handler_ack = SDSWITCH_HANDLER_ACK_SPECIAL;
+
+  bool condition = true
+                    // && (ctx.scause == RISCV_EXCP_SECCELL_ILL_TGT)
+                    // && (ctx.stval == expected_stval)
+                    && (get_usid() == 0)
+                    && (get_urid() == 1);
+  
+  if(!condition)
+    trap_mistakes += 1;
+}
+int sdswitch_exception_addr(void) {
+  int mistakes = 0;
+  trap_id = TRAP_SDSWITCH_ADDR;
+  uint64_t tgt_usid, tgt_addr;
+
+  /* Try to switch to instruction before entry and check fault */
+  CHECK(get_usid() == 1);
+  tgt_usid = 2;
+  expected_stval = (uint64_t)&&sdswitch_test_exception_addr0;
+  sdswitch_handler_ack = 0;
+  trap_mistakes = 0;
+  jals(tgt_usid, _sdswitch_test_exception_addr0);
+  nop(5);
+sdswitch_test_exception_addr0:
+  asm("_sdswitch_test_exception_addr0:");
+  CHECK(!trap_mistakes && (sdswitch_handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+
+  /* Try to switch to instruction before entry with jalrs and check fault */
+  CHECK(get_usid() == 1);
+  tgt_usid = 1024;
+  tgt_addr = (uint64_t)&&sdswitch_test_exception_addr1 - 2;
+  expected_stval = tgt_addr;
+  sdswitch_handler_ack = 0;
+  trap_mistakes = 0;
+  jalrs(tgt_usid, tgt_addr);
+  nop(7);
+sdswitch_test_exception_addr1:
+  entry(_sdswitch_test_exception_addr1);
+  CHECK(!trap_mistakes && (sdswitch_handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+
+  return mistakes;
+}
+
 int sdswitch_tests() {
   int sdswitch_mistakes = 0;
 
   sdswitch_mistakes += sdswitch_test_functionality_jals();
   sdswitch_mistakes += sdswitch_test_functionality_jalrs();
+  sdswitch_mistakes += sdswitch_exception_sdid();
+  sdswitch_mistakes += sdswitch_exception_addr();
 
   return sdswitch_mistakes;
 }
