@@ -20,6 +20,11 @@
 #define RISCV_EXCP_SECCELL_INV_CELL_STATE        0x1b
 #define RISCV_EXCP_SECCELL_ILL_TGT               0x1c
 
+
+#define RT_VAL_SHIFT      127          // in 128-bit cell desc
+#define RT_VAL_MASK       1ull // 1 bit for valid marker
+
+
 static inline 
 void set_urid(uint64_t urid) {
    asm("csrw urid, %[urid]"
@@ -50,6 +55,14 @@ uint64_t get_usid(void) {
       : [usid] "=r" (usid)
       ::);
    return usid;
+}
+
+
+static inline 
+bool is_valid_cell(uint128_t cell)
+{
+   uint8_t val_flag = (cell >> RT_VAL_SHIFT) & RT_VAL_MASK;
+   return (0 != val_flag);
 }
 
 /* Macros for assembly instructions */

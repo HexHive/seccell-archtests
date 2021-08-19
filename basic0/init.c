@@ -36,11 +36,12 @@ void write_cell(uint64_t *addr, uint64_t va, uint64_t va_end, uint64_t pa) {
 
 /* setup_vm operates in PA space */
 void setup_vm(void) {
-  // memset(ptable, 0, sizeof(ptable));
+  memset(ptable, 0, sizeof(ptable));
 
-  // Set N = 4, M = 3, T = 1
+  set_ptable(ptable + VA_OFFSET);
+  // Set N = 5, M = 3, T = 1
   uint32_t *ptable_meta = (uint32_t *) ptable;
-  ptable_meta[3] = 4;
+  ptable_meta[3] = 5;
   ptable_meta[2] = 3;
   ptable_meta[1] = 1;
 
@@ -67,19 +68,27 @@ void setup_vm(void) {
   write_cell((uint64_t *)&ptable[0x30], va_start, va_end - 1, pa);
   set_cell(2, va_start, va_end - 1, pa);
 
+  /* Fourth cell which aliases first cell, but at larger offset */
+  pa = (uint64_t)ptable;
+  va_start = pa + 2 * VA_OFFSET;
+  va_end = va_start + 0x4000;
+  write_cell((uint64_t *)&ptable[0x40], va_start, va_end - 1, pa);
+  set_cell(3, va_start, va_end - 1, pa);
+
   uint8_t *perms = ptable + (16 * 64);
-  /* Permissions for supervisor: rwx (cf), r-x (cb), rwx (cf) */
+  /* Permissions for supervisor: rwx (cf), r-x (cb), rwx (cf), rwx (cf) */
   set_cell_perm(0, 0, *(perms + (0 * 64) + 1) = 0xcf);
   set_cell_perm(0, 1, *(perms + (0 * 64) + 2) = 0xcb);
   set_cell_perm(0, 2, *(perms + (0 * 64) + 3) = 0xcf);
-  /* Permissions for secdiv SD1: rw- (c3), r-x (cb), rw- (c7) */
+  set_cell_perm(0, 3, *(perms + (0 * 64) + 4) = 0xcf);
+  /* Permissions for secdiv SD1: rw- (c3), r-x (cb), rw- (c7), rw- (c7) */
   set_cell_perm(1, 0, *(perms + (1 * 64) + 1) = 0xc7);
   set_cell_perm(1, 1, *(perms + (1 * 64) + 2) = 0xcb);
   set_cell_perm(1, 2, *(perms + (1 * 64) + 3) = 0xc7);
-  /* Permissions for secdiv SD2: --- (c1), r-x (cb), --- (c1) */
+  set_cell_perm(1, 3, *(perms + (1 * 64) + 4) = 0xc7);
+  /* Permissions for secdiv SD2: --- (c1), r-x (cb), --- (c1), --- (c1) */
   set_cell_perm(2, 0, *(perms + (2 * 64) + 1) = 0xc1);
   set_cell_perm(2, 1, *(perms + (2 * 64) + 2) = 0xcb);
   set_cell_perm(2, 2, *(perms + (2 * 64) + 3) = 0xc1);
-
-  
+  set_cell_perm(2, 3, *(perms + (2 * 64) + 4) = 0xc1);
 }

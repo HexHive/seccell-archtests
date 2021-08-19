@@ -7,3 +7,6 @@
     void (*trap)(void) = (void (*)(void))SPECIAL_TRAP_ADDR; \
     trap();                                                 \
   } while(0)
+
+
+typedef unsigned __int128 uint128_t;

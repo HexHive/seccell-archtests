@@ -65,16 +65,25 @@ enum trap_cause {
   TRAP_SDSWITCH_ADDR,
   TRAP_SDSWITCH_END,
 
+  TRAP_SCINVAL_REVAL_BEGIN,
+  TRAP_SCINVAL_REVAL_FUNC_TRAP = TRAP_SCINVAL_REVAL_BEGIN,
+  TRAP_SCINVAL_REVAL_END,
+
   TRAP_COUNT
 };
 
 /******************************************
  * Cells Setup 
  *****************************************/
-#define N_CELLS 3
+#define N_CELLS 4
 #define M_SDS   3
 static struct cell cells[N_CELLS];
 static uint8_t cperms[M_SDS][N_CELLS];
+static uint8_t *ptable;
+
+void set_ptable(uint8_t *ptable_s) {
+  ptable = ptable_s;
+}
 
 void set_cell(int cidx, uint64_t va_start, uint64_t va_end, uint64_t pa) {
   cells[cidx].va_start = va_start;
@@ -96,8 +105,9 @@ void set_cell_perm(int sdidx, int cidx, uint8_t perm) {
  * These functions run as supervisor
  *****************************************/
 static struct context ctx;
-static enum trap_cause trap_id;
-static int trap_mistakes;
+volatile static  enum trap_cause trap_id;
+volatile static  int trap_mistakes;
+volatile static  uint64_t expected_stval;
 
 void setup_trap_handler(void) {
   asm("csrw sscratch, %[ctx]"
@@ -107,6 +117,7 @@ void trap_sccount_perm_exception_handler(void);
 void trap_sccount_addr_exception_handler(void);
 void trap_sdswitch_exception_sdid(void);
 void trap_sdswitch_exception_addr(void);
+void trap_scinval_reval_functionality_exception(void);
 
 void trap_skip_inst(void) {
   if(ctx.sepc == SPECIAL_TRAP_ADDR) {
@@ -161,10 +172,15 @@ void c_trap_handler(void) {
     break;
 
   case TRAP_SDSWITCH_ADDR:
-   trap_sdswitch_exception_addr();
-   trap_skip_inst();
-   break;
-   
+    trap_sdswitch_exception_addr();
+    trap_skip_inst();
+    break;
+
+  case TRAP_SCINVAL_REVAL_FUNC_TRAP:
+    trap_scinval_reval_functionality_exception();
+    trap_skip_inst();
+    break; 
+  
   /* Unknown/invalid causes will lead to another fault */
   case INVALID_CAUSE:
   default:
@@ -184,8 +200,8 @@ uint64_t SCCount(uint64_t addr, uint8_t perm) {
 /******************************************
  * Tests for SCCount instruction
  *****************************************/
-static uint64_t sccount_test_id, sccount_test_value, sccount_test_value2;
-static uint64_t sccount_handler_ack;
+volatile static  uint64_t sccount_test_id, sccount_test_value, sccount_test_value2;
+volatile static  uint64_t sccount_handler_ack;
 #define SCCOUNT_HANDLER_ACK_SPECIAL 0xc007
 
 /* Testing correctness of sccount instructions for legal operands */
@@ -314,8 +330,7 @@ int sccount_tests() {
 /******************************************
  * Tests for SDSwitch instruction
  *****************************************/
-static uint64_t sdswitch_handler_ack;
-static uint64_t expected_stval;
+volatile static  uint64_t sdswitch_handler_ack;
 #define SDSWITCH_HANDLER_ACK_SPECIAL 0xc017
 
 int sdswitch_test_functionality_jals() {
@@ -437,8 +452,8 @@ void trap_sdswitch_exception_addr(void) {
   sdswitch_handler_ack = SDSWITCH_HANDLER_ACK_SPECIAL;
 
   bool condition = true
-                    // && (ctx.scause == RISCV_EXCP_SECCELL_ILL_TGT)
-                    // && (ctx.stval == expected_stval)
+                    && (ctx.scause == RISCV_EXCP_SECCELL_ILL_TGT)
+                    && (ctx.stval == expected_stval)
                     && (get_usid() == 0)
                     && (get_urid() == 1);
   
@@ -490,6 +505,104 @@ int sdswitch_tests() {
 }
 
 /******************************************
+ * Tests for SCInval/Reval instruction
+ *****************************************/
+volatile static uint64_t scinreval_handler_ack = 0;
+#define SDINREVAL_HANDLER_ACK_SPECIAL 0xd0d0
+
+void trap_scinval_reval_functionality_exception(void) {
+  scinreval_handler_ack = SDINREVAL_HANDLER_ACK_SPECIAL;
+
+  bool condition = true
+                    && (ctx.scause == RISCV_EXCP_STORE_PAGE_FAULT)
+                    && (ctx.stval == expected_stval)
+                    && (get_usid() == 0)
+                    && (get_urid() == 1);
+  
+  if(!condition)
+    trap_mistakes += 1;
+
+}
+
+int scinval_reval_functionality(void) {
+  int mistakes = 0;
+
+  /* We will repeatedly invalidate and revalidate the 
+   * cell 4, which aliases to ptable */
+  volatile uint8_t *perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
+  volatile uint8_t *sup_perms_ptr = ptable + (16 * 64) + (64 * 0) + 4;
+  volatile uint128_t *desc_ptr = (volatile uint128_t *)(ptable + 0x40);
+  volatile uint8_t *ptr_under_test = (uint8_t *)cells[3].va_start;
+  volatile uint8_t junk = 0;
+
+  CHECK(get_usid() == 1);
+  CHECK(is_valid_cell(*desc_ptr));
+  CHECK(*perms_ptr == 0xc7);
+  CHECK(*sup_perms_ptr == 0xcf);
+  /* This ptr is still valid, and this dereference should not fault.
+   * This byte is currently reserved by SecCells, and should be zero */
+  trap_id = INVALID_CAUSE;
+  CHECK(*ptr_under_test == 0);
+
+  inval(ptr_under_test);
+  CHECK(get_usid() == 1);
+  CHECK(!is_valid_cell(*desc_ptr));
+  CHECK(*perms_ptr == 0xc0);
+  CHECK(*sup_perms_ptr == 0xce);
+  /* This ptr access is now invalid, and this dereference should fault. */
+  trap_id = TRAP_SCINVAL_REVAL_FUNC_TRAP;
+  scinreval_handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = (uint64_t)ptr_under_test;
+  *ptr_under_test = 0;
+  CHECK(!trap_mistakes && (scinreval_handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+
+  reval(ptr_under_test, RT_R);
+  CHECK(get_usid() == 1);
+  CHECK(is_valid_cell(*desc_ptr));
+  CHECK(*perms_ptr == 0xc3);
+  CHECK(*sup_perms_ptr == 0xcf);
+  /* This ptr is again valid, and this dereference should not fault.
+   * This byte is currently reserved by SecCells, and should be zero */
+  trap_id = INVALID_CAUSE;
+  CHECK(*ptr_under_test == 0);
+
+
+  inval(ptr_under_test);
+  CHECK(get_usid() == 1);
+  CHECK(!is_valid_cell(*desc_ptr));
+  CHECK(*perms_ptr == 0xc0);
+  CHECK(*sup_perms_ptr == 0xce);
+  /* This ptr access is now invalid, and this dereference should fault. */
+  trap_id = TRAP_SCINVAL_REVAL_FUNC_TRAP;
+  scinreval_handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = (uint64_t)ptr_under_test;
+  *ptr_under_test = 0;
+  CHECK(!trap_mistakes && (scinreval_handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+
+  reval(ptr_under_test, RT_R | RT_W);
+  CHECK(get_usid() == 1);
+  CHECK(is_valid_cell(*desc_ptr));
+  CHECK(*perms_ptr == 0xc7);
+  CHECK(*sup_perms_ptr == 0xcf);
+  /* This ptr is again valid, and this dereference should not fault.
+   * This byte is currently reserved by SecCells, and should be zero */
+  trap_id = INVALID_CAUSE;
+  CHECK(*ptr_under_test == 0);
+
+  return mistakes;
+}
+
+int scinval_reval_tests(void) {
+  int scinval_reval_mistakes = 0;
+
+  scinval_reval_mistakes += scinval_reval_functionality();
+
+  return scinval_reval_mistakes;
+}
+
+/******************************************
  * Tests Suite
  *****************************************/
 void correct() {
@@ -511,6 +624,7 @@ void test(void) {
   /* Begin actual testing */
   mistakes += sccount_tests();
   mistakes += sdswitch_tests();
+  mistakes += scinval_reval_tests();
 
   if(mistakes)
     wrong();
