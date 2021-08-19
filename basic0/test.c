@@ -49,28 +49,6 @@ struct context {
   uint64_t uxid;
 };
 
-enum trap_cause {
-  INVALID_CAUSE = -1,
-
-  TRAP_TEST = 0,
-
-  /* Traps for SCCOUNT testing */
-  TRAP_SCCOUNT_BEGIN,
-  TRAP_SCCOUNT_PERM_EXCEPTION = TRAP_SCCOUNT_BEGIN,
-  TRAP_SCCOUNT_ADDR_EXCEPTION,
-  TRAP_SCCOUNT_END,
-
-  TRAP_SDSWITCH_BEGIN,
-  TRAP_SDSWITCH_SDID = TRAP_SDSWITCH_BEGIN,
-  TRAP_SDSWITCH_ADDR,
-  TRAP_SDSWITCH_END,
-
-  TRAP_SCINVAL_REVAL_BEGIN,
-  TRAP_SCINVAL_REVAL_FUNC_TRAP = TRAP_SCINVAL_REVAL_BEGIN,
-  TRAP_SCINVAL_REVAL_END,
-
-  TRAP_COUNT
-};
 
 /******************************************
  * Cells Setup 
@@ -104,6 +82,30 @@ void set_cell_perm(int sdidx, int cidx, uint8_t perm) {
  * Handling traps during tests
  * These functions run as supervisor
  *****************************************/
+enum trap_cause {
+  INVALID_CAUSE = -1,
+
+  TRAP_TEST = 0,
+
+  /* Traps for SCCOUNT testing */
+  TRAP_SCCOUNT_BEGIN,
+  TRAP_SCCOUNT_PERM_EXCEPTION = TRAP_SCCOUNT_BEGIN,
+  TRAP_SCCOUNT_ADDR_EXCEPTION,
+  TRAP_SCCOUNT_END,
+
+  TRAP_SDSWITCH_BEGIN,
+  TRAP_SDSWITCH_SDID = TRAP_SDSWITCH_BEGIN,
+  TRAP_SDSWITCH_ADDR,
+  TRAP_SDSWITCH_END,
+
+  TRAP_SCINVAL_REVAL_BEGIN,
+  TRAP_SCINVAL_REVAL_FUNC_TRAP = TRAP_SCINVAL_REVAL_BEGIN,
+  TRAP_SCINVAL_REVAL_ADDR,
+  TRAP_SCINVAL_REVAL_END,
+
+  TRAP_COUNT
+};
+
 static struct context ctx;
 volatile static enum trap_cause trap_id;
 volatile static int trap_mistakes;
@@ -199,6 +201,13 @@ void c_trap_handler(void) {
   case TRAP_SCINVAL_REVAL_FUNC_TRAP:
     trap_generic_test(SDINREVAL_HANDLER_ACK_SPECIAL, 
                       RISCV_EXCP_STORE_PAGE_FAULT, 
+                      0, 1);
+    trap_skip_inst();
+    break; 
+
+  case TRAP_SCINVAL_REVAL_ADDR:
+    trap_generic_test(SDINREVAL_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_ILL_ADDR,
                       0, 1);
     trap_skip_inst();
     break; 
@@ -458,7 +467,8 @@ int scinval_reval_functionality(void) {
   int mistakes = 0;
 
   /* We will repeatedly invalidate and revalidate the 
-   * cell 4, which aliases to ptable */
+   * cell 4, which aliases to ptable:
+   * RW -> inval -> reval R -> inval -> reval RW */
   volatile uint8_t *perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
   volatile uint8_t *sup_perms_ptr = ptable + (16 * 64) + (64 * 0) + 4;
   volatile uint128_t *desc_ptr = (volatile uint128_t *)(ptable + 0x40);
@@ -524,10 +534,33 @@ int scinval_reval_functionality(void) {
   return mistakes;
 }
 
+int scinval_reval_exception_addr() {
+  int mistakes = 0;
+
+  uint8_t *faulty_addr = (uint8_t *)0xfeaf1eaf;
+
+  trap_id = TRAP_SCINVAL_REVAL_ADDR;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = (uint64_t) faulty_addr;
+  inval(faulty_addr);
+  CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+
+  trap_id = TRAP_SCINVAL_REVAL_ADDR;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = (uint64_t) faulty_addr;
+  reval(faulty_addr, RT_R);
+  CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+
+  return mistakes;
+}
+
 int scinval_reval_tests(void) {
   int scinval_reval_mistakes = 0;
 
   scinval_reval_mistakes += scinval_reval_functionality();
+  scinval_reval_mistakes += scinval_reval_exception_addr();
 
   return scinval_reval_mistakes;
 }
