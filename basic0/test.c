@@ -105,9 +105,9 @@ void set_cell_perm(int sdidx, int cidx, uint8_t perm) {
  * These functions run as supervisor
  *****************************************/
 static struct context ctx;
-volatile static  enum trap_cause trap_id;
-volatile static  int trap_mistakes;
-volatile static  uint64_t expected_stval;
+volatile static enum trap_cause trap_id;
+volatile static int trap_mistakes;
+volatile static uint64_t expected_stval, handler_ack;
 
 void setup_trap_handler(void) {
   asm("csrw sscratch, %[ctx]"
@@ -200,8 +200,7 @@ uint64_t SCCount(uint64_t addr, uint8_t perm) {
 /******************************************
  * Tests for SCCount instruction
  *****************************************/
-volatile static  uint64_t sccount_test_id, sccount_test_value, sccount_test_value2;
-volatile static  uint64_t sccount_handler_ack;
+volatile static  uint64_t sccount_test_id;
 #define SCCOUNT_HANDLER_ACK_SPECIAL 0xc007
 
 /* Testing correctness of sccount instructions for legal operands */
@@ -234,13 +233,11 @@ static uint8_t invalid_perms_parameters[] = {
     0x0, 0x1, 0x10, 0x20, 0x40, 0x80
   };
 void trap_sccount_perm_exception_handler(void) {
-  sccount_handler_ack = SCCOUNT_HANDLER_ACK_SPECIAL;
+  handler_ack = SCCOUNT_HANDLER_ACK_SPECIAL;
 
   bool condition = (sccount_test_id >= 8) 
                    && (sccount_test_id < (8 + sizeof(invalid_perms_parameters)))
                    && (ctx.scause == RISCV_EXCP_SECCELL_ILL_PERM)
-                   && (sccount_test_value == 0)
-                   && (sccount_test_value2 == 0)
                    && (get_usid() == 0)
                    && (get_urid() == 1);
 
@@ -264,12 +261,10 @@ int sccount_exception_perms() {
   for(uint8_t i = 0; i < sizeof(invalid_perms_parameters); i++) {
     trap_mistakes = 0;
     sccount_test_id = 8 + i;
-    sccount_test_value = 0;
-    sccount_test_value2 = 0;
-    sccount_handler_ack = 0;
+    handler_ack = 0;
     SCCount(cells[0].va_start, invalid_perms_parameters[i]);
 
-    CHECK(!trap_mistakes && (sccount_handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
+    CHECK(!trap_mistakes && (handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
   }
 
   return mistakes;
@@ -280,13 +275,11 @@ static uint64_t invalid_addresses[] = {
     0x0, 0xf1f1d0d0
   };
 void trap_sccount_addr_exception_handler(void) {
-  sccount_handler_ack = SCCOUNT_HANDLER_ACK_SPECIAL;
+  handler_ack = SCCOUNT_HANDLER_ACK_SPECIAL;
 
   bool condition = (sccount_test_id >= 16) 
                    && (sccount_test_id < (16 + sizeof(invalid_addresses)/sizeof(invalid_addresses[0])))
                    && (ctx.scause == RISCV_EXCP_SECCELL_ILL_ADDR)
-                   && (sccount_test_value == 0)
-                   && (sccount_test_value2 == 0)
                    && (get_usid() == 0)
                    && (get_urid() == 1);
 
@@ -305,12 +298,10 @@ int sccount_exception_addr() {
   for(uint8_t i = 0; i < sizeof(invalid_addresses)/sizeof(invalid_addresses[0]); i++) {
     trap_mistakes = 0;
     sccount_test_id = 16 + i;
-    sccount_test_value = 0;
-    sccount_test_value2 = 0;
-    sccount_handler_ack = 0;
+    handler_ack = 0;
     SCCount(invalid_addresses[i], RT_R);
 
-    CHECK(!trap_mistakes && (sccount_handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
+    CHECK(!trap_mistakes && (handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
   }
 
   return mistakes;
@@ -330,7 +321,6 @@ int sccount_tests() {
 /******************************************
  * Tests for SDSwitch instruction
  *****************************************/
-volatile static  uint64_t sdswitch_handler_ack;
 #define SDSWITCH_HANDLER_ACK_SPECIAL 0xc017
 
 int sdswitch_test_functionality_jals() {
@@ -395,7 +385,7 @@ sdswitch_test_functionality1:
 
 
 void trap_sdswitch_exception_sdid() {
-  sdswitch_handler_ack = SDSWITCH_HANDLER_ACK_SPECIAL;
+  handler_ack = SDSWITCH_HANDLER_ACK_SPECIAL;
 
   bool condition = (ctx.scause == RISCV_EXCP_SECCELL_INV_SDID)
                     && (ctx.stval == expected_stval)
@@ -414,42 +404,42 @@ int sdswitch_exception_sdid() {
   CHECK(get_usid() == 1);
   tgt_usid = 0;
   expected_stval = 0;
-  sdswitch_handler_ack = 0;
+  handler_ack = 0;
   trap_mistakes = 0;
   jals(tgt_usid, sdswitch_test_exception_sdid0);
   nop(5);
   entry(sdswitch_test_exception_sdid0);
-  CHECK(!trap_mistakes && (sdswitch_handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+  CHECK(!trap_mistakes && (handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
 
   /* Try to switch to secdiv 1024, and check fault */
   CHECK(get_usid() == 1);
   tgt_usid = 1024;
   expected_stval = 1024;
-  sdswitch_handler_ack = 0;
+  handler_ack = 0;
   trap_mistakes = 0;
   jals(tgt_usid, sdswitch_test_exception_sdid1);
   nop(3);
   entry(sdswitch_test_exception_sdid1);
-  CHECK(!trap_mistakes && (sdswitch_handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+  CHECK(!trap_mistakes && (handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
 
   /* Try to switch to secdiv 1024 with jalrs, and check fault */
   CHECK(get_usid() == 1);
   tgt_usid = 1024;
   expected_stval = 1024;
   tgt_addr = (uint64_t)&&sdswitch_test_exception_sdid2;
-  sdswitch_handler_ack = 0;
+  handler_ack = 0;
   trap_mistakes = 0;
   jalrs(tgt_usid, tgt_addr);
   nop(7);
 sdswitch_test_exception_sdid2:
   entry(_sdswitch_test_exception_sdid2);
-  CHECK(!trap_mistakes && (sdswitch_handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+  CHECK(!trap_mistakes && (handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
 
   return mistakes;
 }
 
 void trap_sdswitch_exception_addr(void) {
-  sdswitch_handler_ack = SDSWITCH_HANDLER_ACK_SPECIAL;
+  handler_ack = SDSWITCH_HANDLER_ACK_SPECIAL;
 
   bool condition = true
                     && (ctx.scause == RISCV_EXCP_SECCELL_ILL_TGT)
@@ -469,26 +459,26 @@ int sdswitch_exception_addr(void) {
   CHECK(get_usid() == 1);
   tgt_usid = 2;
   expected_stval = (uint64_t)&&sdswitch_test_exception_addr0;
-  sdswitch_handler_ack = 0;
+  handler_ack = 0;
   trap_mistakes = 0;
   jals(tgt_usid, _sdswitch_test_exception_addr0);
   nop(5);
 sdswitch_test_exception_addr0:
   asm("_sdswitch_test_exception_addr0:");
-  CHECK(!trap_mistakes && (sdswitch_handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+  CHECK(!trap_mistakes && (handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
 
   /* Try to switch to instruction before entry with jalrs and check fault */
   CHECK(get_usid() == 1);
   tgt_usid = 1024;
   tgt_addr = (uint64_t)&&sdswitch_test_exception_addr1 - 2;
   expected_stval = tgt_addr;
-  sdswitch_handler_ack = 0;
+  handler_ack = 0;
   trap_mistakes = 0;
   jalrs(tgt_usid, tgt_addr);
   nop(7);
 sdswitch_test_exception_addr1:
   entry(_sdswitch_test_exception_addr1);
-  CHECK(!trap_mistakes && (sdswitch_handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+  CHECK(!trap_mistakes && (handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
 
   return mistakes;
 }
@@ -507,11 +497,10 @@ int sdswitch_tests() {
 /******************************************
  * Tests for SCInval/Reval instruction
  *****************************************/
-volatile static uint64_t scinreval_handler_ack = 0;
 #define SDINREVAL_HANDLER_ACK_SPECIAL 0xd0d0
 
 void trap_scinval_reval_functionality_exception(void) {
-  scinreval_handler_ack = SDINREVAL_HANDLER_ACK_SPECIAL;
+  handler_ack = SDINREVAL_HANDLER_ACK_SPECIAL;
 
   bool condition = true
                     && (ctx.scause == RISCV_EXCP_STORE_PAGE_FAULT)
@@ -551,11 +540,11 @@ int scinval_reval_functionality(void) {
   CHECK(*sup_perms_ptr == 0xce);
   /* This ptr access is now invalid, and this dereference should fault. */
   trap_id = TRAP_SCINVAL_REVAL_FUNC_TRAP;
-  scinreval_handler_ack = 0;
+  handler_ack = 0;
   trap_mistakes = 0;
   expected_stval = (uint64_t)ptr_under_test;
   *ptr_under_test = 0;
-  CHECK(!trap_mistakes && (scinreval_handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+  CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
 
   reval(ptr_under_test, RT_R);
   CHECK(get_usid() == 1);
@@ -575,11 +564,11 @@ int scinval_reval_functionality(void) {
   CHECK(*sup_perms_ptr == 0xce);
   /* This ptr access is now invalid, and this dereference should fault. */
   trap_id = TRAP_SCINVAL_REVAL_FUNC_TRAP;
-  scinreval_handler_ack = 0;
+  handler_ack = 0;
   trap_mistakes = 0;
   expected_stval = (uint64_t)ptr_under_test;
   *ptr_under_test = 0;
-  CHECK(!trap_mistakes && (scinreval_handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+  CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
 
   reval(ptr_under_test, RT_R | RT_W);
   CHECK(get_usid() == 1);
