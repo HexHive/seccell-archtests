@@ -110,6 +110,13 @@ enum trap_cause {
   TRAP_SCPROT_PERM,
   TRAP_SCPROT_END,
 
+  TRAP_SCGRANT_BEGIN,
+  TRAP_SCGRANT_ADDR = TRAP_SCGRANT_BEGIN,
+  TRAP_SCGRANT_PERM,
+  TRAP_SCGRANT_SDID,
+
+  TRAP_SCGRANT_END,
+
   TRAP_COUNT
 };
 
@@ -127,6 +134,8 @@ void setup_trap_handler(void) {
 #define SDSWITCH_HANDLER_ACK_SPECIAL  0xc017
 #define SDINREVAL_HANDLER_ACK_SPECIAL 0xd0d0
 #define SDPROT_HANDLER_ACK_SPECIAL    0xf0d0
+#define SDGRANT_HANDLER_ACK_SPECIAL   0xd1ed
+
 void trap_generic_test(uint64_t handler_ack_magic, uint64_t expected_cause,
                        uint64_t expected_usid, uint64_t expected_urid) {
   handler_ack = handler_ack_magic;
@@ -248,6 +257,27 @@ void c_trap_handler(void) {
     trap_skip_inst();
     break; 
     
+  case TRAP_SCGRANT_ADDR:
+    trap_generic_test(SDGRANT_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_ILL_ADDR,
+                      0, 1);
+    trap_skip_inst();
+    break; 
+  
+  case TRAP_SCGRANT_SDID:
+    trap_generic_test(SDGRANT_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_INV_SDID,
+                      0, 1);
+    trap_skip_inst();
+    break; 
+  
+  case TRAP_SCGRANT_PERM:
+    trap_generic_test(SDGRANT_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_ILL_PERM,
+                      0, 1);
+    trap_skip_inst();
+    break; 
+
   /* Unknown/invalid causes will lead to another fault */
   case INVALID_CAUSE:
   default:
@@ -756,6 +786,173 @@ int scprotect_tests(void) {
 }
 
 /******************************************
+ * Tests for SCProtect instruction
+ *****************************************/
+
+int scgrant_test_functionality(void) {
+  int mistakes = 0;
+
+  volatile uint8_t *src_perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
+  volatile uint8_t *dst_perms_ptr = ptable + (16 * 64) + (64 * 2) + 4;
+  uint64_t valid_addr = cells[3].va_start;
+
+  trap_id = INVALID_CAUSE;
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
+  inval(valid_addr);
+  reval(valid_addr, RT_R | RT_W | RT_X);
+  CHECK(*src_perms_ptr == 0xcf);
+
+  grant(valid_addr, 2, RT_R);
+  CHECK(*src_perms_ptr == 0xcf);
+  CHECK(*dst_perms_ptr == 0xc3);
+
+  grant(valid_addr, 2, RT_W);
+  CHECK(*src_perms_ptr == 0xcf);
+  CHECK(*dst_perms_ptr == 0xc7);
+
+  grant(valid_addr, 2, RT_X);
+  CHECK(*src_perms_ptr == 0xcf);
+  CHECK(*dst_perms_ptr == 0xcf);
+
+  /* Reset to initial state */
+  prot(valid_addr, RT_R | RT_W);
+  uint64_t tgt_sd = 2;
+  jals(tgt_sd, scgrant_test_functionality0);
+  entry(scgrant_test_functionality0);
+  prot(valid_addr, 0);
+  tgt_sd = 1;
+  jals(tgt_sd, scgrant_test_functionality1);
+  entry(scgrant_test_functionality1);
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
+  CHECK(get_usid() == 1);
+
+  return mistakes;
+}
+
+int scgrant_exception_addr(void) {
+  int mistakes = 0;
+
+  volatile uint8_t *src_perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
+  volatile uint8_t *dst_perms_ptr = ptable + (16 * 64) + (64 * 2) + 4;
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
+
+  uint64_t faulty_addrs[] = {0xea15f00d, 0xffffffffea15f00d};
+
+  for(unsigned i = 0; i < sizeof(faulty_addrs) / sizeof(faulty_addrs[0]); i++) {
+    uint64_t faulty_addr = faulty_addrs[i];
+    
+    trap_id = TRAP_SCGRANT_ADDR;
+    handler_ack = 0;
+    trap_mistakes = 0;
+    expected_stval = faulty_addr;
+    grant(faulty_addr, 2, RT_R);
+    CHECK(!trap_mistakes && (handler_ack == SDGRANT_HANDLER_ACK_SPECIAL));
+  }
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
+
+  return mistakes;
+}
+
+int scgrant_exception_sdid(void) {
+  int mistakes = 0;
+
+  volatile uint8_t *src_perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
+  volatile uint8_t *dst_perms_ptr = ptable + (16 * 64) + (64 * 2) + 4;
+  uint64_t valid_addr = cells[3].va_start;
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
+
+  uint64_t tgt_sds[] = {0, 1024};
+  for(int i = 0; i < sizeof(tgt_sds) / sizeof(tgt_sds[0]); i++) {
+    uint64_t tgt_sd = tgt_sds[i];
+
+    trap_id = TRAP_SCGRANT_SDID;
+    handler_ack = 0;
+    trap_mistakes = 0;
+    expected_stval = tgt_sd;
+    grant(valid_addr, tgt_sd, RT_R);
+    CHECK(!trap_mistakes && (handler_ack == SDGRANT_HANDLER_ACK_SPECIAL));
+  }
+
+  return mistakes;
+}
+
+int scgrant_exception_perms(void) {
+  int mistakes = 0;
+
+  volatile uint8_t *src_perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
+  volatile uint8_t *dst_perms_ptr = ptable + (16 * 64) + (64 * 2) + 4;
+  uint64_t valid_addr = cells[3].va_start;
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
+  uint64_t tgt_sd = 2;
+  uint8_t perms;
+
+  trap_id = TRAP_SCGRANT_PERM;
+  perms = RT_R | RT_W | RT_X | 0x10;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = perms;
+  grant(valid_addr, tgt_sd, perms);
+  CHECK(!trap_mistakes && (handler_ack == SDGRANT_HANDLER_ACK_SPECIAL));
+
+  trap_id = TRAP_SCGRANT_PERM;
+  perms = 0;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = (1 << 8);
+  grant(valid_addr, tgt_sd, perms);
+  CHECK(!trap_mistakes && (handler_ack == SDGRANT_HANDLER_ACK_SPECIAL));
+
+  trap_id = TRAP_SCGRANT_PERM;
+  perms = RT_R | RT_W | RT_X;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = (2 << 8) | perms;
+  grant(valid_addr, tgt_sd, perms);
+  CHECK(!trap_mistakes && (handler_ack == SDGRANT_HANDLER_ACK_SPECIAL));
+
+  trap_id = TRAP_SCGRANT_PERM;
+  perms = RT_R | RT_W;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = (3 << 8) | perms;
+  grant(valid_addr, tgt_sd, RT_R);
+  /* The prev grant means that the target already has read permissions */
+  grant(valid_addr, tgt_sd, perms);
+  CHECK(!trap_mistakes && (handler_ack == SDGRANT_HANDLER_ACK_SPECIAL));
+
+  /* Reset to initial state */
+  tgt_sd = 2;
+  jals(tgt_sd, scgrant_exception_perms0);
+  entry(scgrant_exception_perms0);
+  prot(valid_addr, 0);
+  tgt_sd = 1;
+  jals(tgt_sd, scgrant_exception_perms1);
+  entry(scgrant_exception_perms1);
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
+  CHECK(get_usid() == 1);
+
+  return mistakes;
+}
+
+int scgrant_tests(void) {
+  int scgrant_mistakes = 0;
+
+  scgrant_mistakes += scgrant_test_functionality();
+  scgrant_mistakes += scgrant_exception_addr();
+  scgrant_mistakes += scgrant_exception_sdid();
+  scgrant_mistakes += scgrant_exception_perms();
+
+  return scgrant_mistakes;
+}
+
+/******************************************
  * Tests Suite
  *****************************************/
 void correct() {
@@ -779,6 +976,7 @@ void test(void) {
   mistakes += sdswitch_tests();
   mistakes += scinval_reval_tests();
   mistakes += scprotect_tests();
+  mistakes += scgrant_tests();
 
   if(mistakes)
     wrong();
