@@ -101,6 +101,7 @@ enum trap_cause {
   TRAP_SCINVAL_REVAL_BEGIN,
   TRAP_SCINVAL_REVAL_FUNC_TRAP = TRAP_SCINVAL_REVAL_BEGIN,
   TRAP_SCINVAL_REVAL_ADDR,
+  TRAP_SCINVAL_REVAL_CELL_STATE,
   TRAP_SCINVAL_REVAL_END,
 
   TRAP_COUNT
@@ -212,6 +213,13 @@ void c_trap_handler(void) {
     trap_skip_inst();
     break; 
   
+  case TRAP_SCINVAL_REVAL_CELL_STATE:
+    trap_generic_test(SDINREVAL_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_INV_CELL_STATE,
+                      0, 1);
+    trap_skip_inst();
+    break; 
+
   /* Unknown/invalid causes will lead to another fault */
   case INVALID_CAUSE:
   default:
@@ -534,7 +542,7 @@ int scinval_reval_functionality(void) {
   return mistakes;
 }
 
-int scinval_reval_exception_addr() {
+int scinval_reval_exception_addr(void) {
   int mistakes = 0;
 
   uint8_t *faulty_addr = (uint8_t *)0xfeaf1eaf;
@@ -556,11 +564,44 @@ int scinval_reval_exception_addr() {
   return mistakes;
 }
 
+int scinval_reval_exception_celldesc(void) {
+  int mistakes = 0;
+
+  uint8_t *valid_addr = (uint8_t *)cells[3].va_start;
+  uint8_t *shared_addr = (uint8_t *)cells[2].va_start;
+
+  trap_id = TRAP_SCINVAL_REVAL_CELL_STATE;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = (uint64_t) 0; /* Since cell is already valid */
+  reval(valid_addr, RT_R);
+  CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+
+  trap_id = TRAP_SCINVAL_REVAL_CELL_STATE;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  inval(valid_addr);
+  expected_stval = (uint64_t) 0; /* Since cell is already invalid */
+  inval(valid_addr);
+  CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+  reval(valid_addr, RT_R | RT_W);
+
+  trap_id = TRAP_SCINVAL_REVAL_CELL_STATE;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = (uint64_t) 1; /* Since cell is shared with other SD */
+  inval(shared_addr);
+  CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+
+  return mistakes;
+}
+
 int scinval_reval_tests(void) {
   int scinval_reval_mistakes = 0;
 
   scinval_reval_mistakes += scinval_reval_functionality();
   scinval_reval_mistakes += scinval_reval_exception_addr();
+  scinval_reval_mistakes += scinval_reval_exception_celldesc();
 
   return scinval_reval_mistakes;
 }

@@ -47,21 +47,21 @@ void setup_vm(void) {
 
   uint64_t va_start, va_end, pa;
 
-  /* Setup first cell:  VA=0x1 8002 0000, PA=.data, size=0x4000 */
+  /* Setup first cell:  VA=0x1 8004 0000, PA=.data, size=0x4000 */
   pa = (uint64_t)ptable;
   va_start = pa + VA_OFFSET;
   va_end = va_start + 0x4000;
   write_cell((uint64_t *)&ptable[0x10], va_start, va_end - 1, pa);
   set_cell(0, va_start, va_end - 1, pa);
 
-  /* Setup second cell: VA=0x1 8002 4000, PA=.text, size=0x4000 */
+  /* Setup second cell: VA=0x1 8004 4000, PA=.text, size=0x4000 */
   pa       += 0x4000;
   va_start += 0x4000;
   va_end   += 0x4000;
   write_cell((uint64_t *)&ptable[0x20], va_start, va_end - 1, pa);
   set_cell(1, va_start, va_end - 1, pa);
 
-  /* Setup third cell: VA=0x1 8000 8000, PA=.remaining, size=0x1d 8000 */
+  /* Setup third cell: VA=0x1 8004 8000, PA=.remaining, size=0x1d 8000 */
   pa       += 0x4000;
   va_start += 0x4000;
   va_end = (uint64_t)ptable - BIOS_SIZE + RAM_SIZE + VA_OFFSET;
@@ -81,14 +81,14 @@ void setup_vm(void) {
   set_cell_perm(0, 1, *(perms + (0 * 64) + 2) = 0xcb);
   set_cell_perm(0, 2, *(perms + (0 * 64) + 3) = 0xcf);
   set_cell_perm(0, 3, *(perms + (0 * 64) + 4) = 0xcf);
-  /* Permissions for secdiv SD1: rw- (c3), r-x (cb), rw- (c7), rw- (c7) */
+  /* Permissions for secdiv SD1: rw- (c7), r-x (cb), rw- (c7), rw- (c7) */
   set_cell_perm(1, 0, *(perms + (1 * 64) + 1) = 0xc7);
   set_cell_perm(1, 1, *(perms + (1 * 64) + 2) = 0xcb);
   set_cell_perm(1, 2, *(perms + (1 * 64) + 3) = 0xc7);
   set_cell_perm(1, 3, *(perms + (1 * 64) + 4) = 0xc7);
-  /* Permissions for secdiv SD2: --- (c1), r-x (cb), --- (c1), --- (c1) */
+  /* Permissions for secdiv SD2: --- (c1), r-x (cb), rw- (c7), --- (c1) */
   set_cell_perm(2, 0, *(perms + (2 * 64) + 1) = 0xc1);
   set_cell_perm(2, 1, *(perms + (2 * 64) + 2) = 0xcb);
-  set_cell_perm(2, 2, *(perms + (2 * 64) + 3) = 0xc1);
+  set_cell_perm(2, 2, *(perms + (2 * 64) + 3) = 0xc7);
   set_cell_perm(2, 3, *(perms + (2 * 64) + 4) = 0xc1);
 }
