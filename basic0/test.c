@@ -102,6 +102,7 @@ enum trap_cause {
   TRAP_SCINVAL_REVAL_FUNC_TRAP = TRAP_SCINVAL_REVAL_BEGIN,
   TRAP_SCINVAL_REVAL_ADDR,
   TRAP_SCINVAL_REVAL_CELL_STATE,
+  TRAP_SCINVAL_REVAL_PERMS,
   TRAP_SCINVAL_REVAL_END,
 
   TRAP_COUNT
@@ -216,6 +217,13 @@ void c_trap_handler(void) {
   case TRAP_SCINVAL_REVAL_CELL_STATE:
     trap_generic_test(SDINREVAL_HANDLER_ACK_SPECIAL,
                       RISCV_EXCP_SECCELL_INV_CELL_STATE,
+                      0, 1);
+    trap_skip_inst();
+    break; 
+
+  case TRAP_SCINVAL_REVAL_PERMS:
+    trap_generic_test(SDINREVAL_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_ILL_PERM,
                       0, 1);
     trap_skip_inst();
     break; 
@@ -596,12 +604,41 @@ int scinval_reval_exception_celldesc(void) {
   return mistakes;
 }
 
+int screval_exception_perm(void) {
+  int mistakes = 0;
+  uint8_t *valid_addr = (uint8_t *)cells[3].va_start;
+  uint8_t perms = RT_R | RT_W | RT_X | 0x10;
+
+  /* Pre-invalidate cell */
+  inval(valid_addr);
+
+  trap_id = TRAP_SCINVAL_REVAL_PERMS;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = 1 << 8;
+  reval(valid_addr, 0);
+  CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+
+  trap_id = TRAP_SCINVAL_REVAL_PERMS;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = perms;
+  reval(valid_addr, perms);
+  CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
+
+  /* Post-revalidate cell */
+  reval(valid_addr, RT_R | RT_W);
+
+  return mistakes;
+}
+
 int scinval_reval_tests(void) {
   int scinval_reval_mistakes = 0;
 
   scinval_reval_mistakes += scinval_reval_functionality();
   scinval_reval_mistakes += scinval_reval_exception_addr();
   scinval_reval_mistakes += scinval_reval_exception_celldesc();
+  scinval_reval_mistakes += screval_exception_perm();
 
   return scinval_reval_mistakes;
 }
