@@ -105,6 +105,11 @@ enum trap_cause {
   TRAP_SCINVAL_REVAL_PERMS,
   TRAP_SCINVAL_REVAL_END,
 
+  TRAP_SCPROT_BEGIN,
+  TRAP_SCPROT_ADDR = TRAP_SCPROT_BEGIN,
+  TRAP_SCPROT_PERM,
+  TRAP_SCPROT_END,
+
   TRAP_COUNT
 };
 
@@ -121,6 +126,7 @@ void setup_trap_handler(void) {
 #define SCCOUNT_HANDLER_ACK_SPECIAL   0xc007
 #define SDSWITCH_HANDLER_ACK_SPECIAL  0xc017
 #define SDINREVAL_HANDLER_ACK_SPECIAL 0xd0d0
+#define SDPROT_HANDLER_ACK_SPECIAL    0xf0d0
 void trap_generic_test(uint64_t handler_ack_magic, uint64_t expected_cause,
                        uint64_t expected_usid, uint64_t expected_urid) {
   handler_ack = handler_ack_magic;
@@ -228,6 +234,20 @@ void c_trap_handler(void) {
     trap_skip_inst();
     break; 
 
+  case TRAP_SCPROT_ADDR:
+    trap_generic_test(SDPROT_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_ILL_ADDR,
+                      0, 1);
+    trap_skip_inst();
+    break; 
+
+  case TRAP_SCPROT_PERM:
+    trap_generic_test(SDPROT_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_ILL_PERM,
+                      0, 1);
+    trap_skip_inst();
+    break; 
+    
   /* Unknown/invalid causes will lead to another fault */
   case INVALID_CAUSE:
   default:
@@ -644,6 +664,98 @@ int scinval_reval_tests(void) {
 }
 
 /******************************************
+ * Tests for SCProtect instruction
+ *****************************************/
+int scprotect_test_functionality(void) {
+  int mistakes = 0;
+
+  volatile uint8_t *perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
+  uint64_t valid_addr = cells[3].va_start;
+
+  trap_id = INVALID_CAUSE;
+  CHECK(*perms_ptr == 0xc7);
+  prot(valid_addr, RT_R);
+  CHECK(*perms_ptr == 0xc3);
+  inval(valid_addr);
+
+  reval(valid_addr, RT_R | RT_W | RT_X);
+  CHECK(*perms_ptr == 0xcf);
+  prot(valid_addr, RT_R);
+  CHECK(*perms_ptr == 0xc3);
+  inval(valid_addr);
+
+  reval(valid_addr, RT_R | RT_W | RT_X);
+  CHECK(*perms_ptr == 0xcf);
+  prot(valid_addr, RT_R | RT_W);
+  CHECK(*perms_ptr == 0xc7);
+  inval(valid_addr);
+
+  reval(valid_addr, RT_R | RT_W | RT_X);
+  CHECK(*perms_ptr == 0xcf);
+  prot(valid_addr, RT_R | RT_X);
+  CHECK(*perms_ptr == 0xcb);
+  inval(valid_addr);
+
+  reval(valid_addr, RT_R | RT_W);
+  
+  return mistakes;
+}
+
+int scprotect_exception_addr(void){
+  int mistakes = 0;
+
+  uint64_t faulty_addrs[] = {0xea15f00d, 0xffffffffea15f00d};
+
+  for(unsigned i = 0; i < sizeof(faulty_addrs) / sizeof(faulty_addrs[0]); i++) {
+    uint64_t faulty_addr = faulty_addrs[i];
+    
+    trap_id = TRAP_SCPROT_ADDR;
+    handler_ack = 0;
+    trap_mistakes = 0;
+    expected_stval = faulty_addr;
+    prot(faulty_addr, RT_R);
+    CHECK(!trap_mistakes && (handler_ack == SDPROT_HANDLER_ACK_SPECIAL));
+  }
+
+  return mistakes;
+}
+
+int scprotect_exception_perms(void) {
+  int mistakes = 0;
+
+  uint64_t valid_addr = cells[3].va_start;
+  uint8_t perms;
+
+  trap_id = TRAP_SCPROT_PERM;
+  perms = RT_R | RT_W | RT_X | 0x10;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = perms;
+  prot(valid_addr, perms);
+  CHECK(!trap_mistakes && (handler_ack == SDPROT_HANDLER_ACK_SPECIAL));
+
+  trap_id = TRAP_SCPROT_PERM;
+  perms = RT_R | RT_W | RT_X;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = (2 << 8) | perms;
+  prot(valid_addr, perms);
+  CHECK(!trap_mistakes && (handler_ack == SDPROT_HANDLER_ACK_SPECIAL));
+
+  return mistakes;
+}
+
+int scprotect_tests(void) {
+  int scprotect_mistakes = 0;
+
+  scprotect_mistakes += scprotect_test_functionality();
+  scprotect_mistakes += scprotect_exception_addr();
+  scprotect_mistakes += scprotect_exception_perms();
+
+  return scprotect_mistakes;
+}
+
+/******************************************
  * Tests Suite
  *****************************************/
 void correct() {
@@ -666,6 +778,7 @@ void test(void) {
   mistakes += sccount_tests();
   mistakes += sdswitch_tests();
   mistakes += scinval_reval_tests();
+  mistakes += scprotect_tests();
 
   if(mistakes)
     wrong();
