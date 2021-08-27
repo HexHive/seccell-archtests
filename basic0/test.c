@@ -91,6 +91,7 @@ enum trap_cause {
   TRAP_SCCOUNT_BEGIN,
   TRAP_SCCOUNT_PERM_EXCEPTION = TRAP_SCCOUNT_BEGIN,
   TRAP_SCCOUNT_ADDR_EXCEPTION,
+  TRAP_SCCOUNT_CELL_STATE,
   TRAP_SCCOUNT_END,
 
   TRAP_SDSWITCH_BEGIN,
@@ -108,18 +109,21 @@ enum trap_cause {
   TRAP_SCPROT_BEGIN,
   TRAP_SCPROT_ADDR = TRAP_SCPROT_BEGIN,
   TRAP_SCPROT_PERM,
+  TRAP_SCPROT_INVCELL,
   TRAP_SCPROT_END,
 
   TRAP_SCGRANT_BEGIN,
   TRAP_SCGRANT_ADDR = TRAP_SCGRANT_BEGIN,
   TRAP_SCGRANT_PERM,
   TRAP_SCGRANT_SDID,
+  TRAP_SCGRANT_INVCELL,
   TRAP_SCGRANT_END,
 
   TRAP_SCTFER_BEGIN,
   TRAP_SCTFER_ADDR = TRAP_SCTFER_BEGIN,
   TRAP_SCTFER_PERM,
   TRAP_SCTFER_SDID,
+  TRAP_SCTFER_INVCELL,
   TRAP_SCTFER_END,
 
   TRAP_COUNT
@@ -206,6 +210,13 @@ void c_trap_handler(void) {
                       0, 1);
     trap_skip_inst();
     break;
+  
+  case TRAP_SCCOUNT_CELL_STATE:
+    trap_generic_test(SCCOUNT_HANDLER_ACK_SPECIAL, 
+                      RISCV_EXCP_SECCELL_INV_CELL_STATE, 
+                      0, 1);
+    trap_skip_inst();
+    break;
 
   case TRAP_SDSWITCH_SDID:
     trap_generic_test(SDSWITCH_HANDLER_ACK_SPECIAL, 
@@ -262,6 +273,13 @@ void c_trap_handler(void) {
                       0, 1);
     trap_skip_inst();
     break; 
+
+  case TRAP_SCPROT_INVCELL:
+    trap_generic_test(SDPROT_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_INV_CELL_STATE,
+                      0, 1);
+    trap_skip_inst();
+    break; 
     
   case TRAP_SCGRANT_ADDR:
     trap_generic_test(SDGRANT_HANDLER_ACK_SPECIAL,
@@ -284,6 +302,13 @@ void c_trap_handler(void) {
     trap_skip_inst();
     break; 
 
+  case TRAP_SCGRANT_INVCELL:
+    trap_generic_test(SDGRANT_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_INV_CELL_STATE,
+                      0, 1);
+    trap_skip_inst();
+    break; 
+
   case TRAP_SCTFER_ADDR:
     trap_generic_test(SCTFER_HANDLER_ACK_SPECIAL,
                       RISCV_EXCP_SECCELL_ILL_ADDR,
@@ -301,6 +326,13 @@ void c_trap_handler(void) {
   case TRAP_SCTFER_SDID:
     trap_generic_test(SCTFER_HANDLER_ACK_SPECIAL,
                       RISCV_EXCP_SECCELL_INV_SDID,
+                      0, 1);
+    trap_skip_inst();
+    break; 
+
+  case TRAP_SCTFER_INVCELL:
+    trap_generic_test(SCTFER_HANDLER_ACK_SPECIAL,
+                      RISCV_EXCP_SECCELL_INV_CELL_STATE,
                       0, 1);
     trap_skip_inst();
     break; 
@@ -392,6 +424,25 @@ int sccount_exception_addr() {
   return mistakes;
 }
 
+int sccount_exception_invcell(void) {
+  int mistakes = 0;
+
+  uint64_t valid_addr = cells[3].va_start;
+
+  /* Invalidate cell, then test exception */
+  inval(valid_addr);
+  trap_id = TRAP_SCCOUNT_CELL_STATE;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = 0;
+  SCCount(valid_addr, RT_R);
+  CHECK(!trap_mistakes && (handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
+
+  /* Return to original state */
+  reval(valid_addr, RT_R | RT_W);
+
+  return mistakes;
+}
 
 int sccount_tests() {
   int sccount_mistakes = 0;
@@ -399,6 +450,7 @@ int sccount_tests() {
   sccount_mistakes += sccount_test_correctness();
   sccount_mistakes += sccount_exception_perms();
   sccount_mistakes += sccount_exception_addr();
+  sccount_mistakes += sccount_exception_invcell();
 
   return sccount_mistakes;
 }
@@ -658,7 +710,7 @@ int scinval_reval_exception_celldesc(void) {
   trap_id = TRAP_SCINVAL_REVAL_CELL_STATE;
   handler_ack = 0;
   trap_mistakes = 0;
-  expected_stval = (uint64_t) 0; /* Since cell is already valid */
+  expected_stval = 1; /* Since cell is already valid */
   reval(valid_addr, RT_R);
   CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
 
@@ -666,7 +718,7 @@ int scinval_reval_exception_celldesc(void) {
   handler_ack = 0;
   trap_mistakes = 0;
   inval(valid_addr);
-  expected_stval = (uint64_t) 0; /* Since cell is already invalid */
+  expected_stval = 0; /* Since cell is already invalid */
   inval(valid_addr);
   CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
   reval(valid_addr, RT_R | RT_W);
@@ -674,7 +726,7 @@ int scinval_reval_exception_celldesc(void) {
   trap_id = TRAP_SCINVAL_REVAL_CELL_STATE;
   handler_ack = 0;
   trap_mistakes = 0;
-  expected_stval = (uint64_t) 1; /* Since cell is shared with other SD */
+  expected_stval = (uint64_t) 2; /* Since cell is shared with other SD */
   inval(shared_addr);
   CHECK(!trap_mistakes && (handler_ack == SDINREVAL_HANDLER_ACK_SPECIAL));
 
@@ -802,12 +854,33 @@ int scprotect_exception_perms(void) {
   return mistakes;
 }
 
+int scprotect_exception_invcell(void) {
+  int mistakes = 0;
+
+  uint64_t valid_addr = cells[3].va_start;
+
+  /* Invalidate cell, then test exception */
+  inval(valid_addr);
+  trap_id = TRAP_SCPROT_INVCELL;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = 0;
+  prot(valid_addr, RT_R);
+  CHECK(!trap_mistakes && (handler_ack == SDPROT_HANDLER_ACK_SPECIAL));
+
+  /* Return to original state */
+  reval(valid_addr, RT_R | RT_W);
+
+  return mistakes;
+}
+
 int scprotect_tests(void) {
   int scprotect_mistakes = 0;
 
   scprotect_mistakes += scprotect_test_functionality();
   scprotect_mistakes += scprotect_exception_addr();
   scprotect_mistakes += scprotect_exception_perms();
+  scprotect_mistakes += scprotect_exception_invcell();
 
   return scprotect_mistakes;
 }
@@ -968,6 +1041,27 @@ int scgrant_exception_perms(void) {
   return mistakes;
 }
 
+int scgrant_exception_invcell(void) {
+  int mistakes = 0;
+
+  uint64_t valid_addr = cells[3].va_start;
+  uint64_t tgt_sd = 2;
+
+  /* Invalidate cell, then test exception */
+  inval(valid_addr);
+  trap_id = TRAP_SCGRANT_INVCELL;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = 0;
+  grant(valid_addr, tgt_sd, RT_R);
+  CHECK(!trap_mistakes && (handler_ack == SDGRANT_HANDLER_ACK_SPECIAL));
+
+  /* Return to original state */
+  reval(valid_addr, RT_R | RT_W);
+
+  return mistakes;
+}
+
 int scgrant_tests(void) {
   int scgrant_mistakes = 0;
 
@@ -975,6 +1069,7 @@ int scgrant_tests(void) {
   scgrant_mistakes += scgrant_exception_addr();
   scgrant_mistakes += scgrant_exception_sdid();
   scgrant_mistakes += scgrant_exception_perms();
+  scgrant_mistakes += scgrant_exception_invcell();
 
   return scgrant_mistakes;
 }
@@ -1138,6 +1233,27 @@ int sctfer_exception_sdid(void) {
 
 }
 
+int sctfer_exception_invcell(void) {
+  int mistakes = 0;
+
+  uint64_t valid_addr = cells[3].va_start;
+  uint64_t tgt_sd = 2;
+
+  /* Invalidate cell, then test exception */
+  inval(valid_addr);
+  trap_id = TRAP_SCTFER_INVCELL;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  expected_stval = 0;
+  tfer(valid_addr, tgt_sd, RT_R);
+  CHECK(!trap_mistakes && (handler_ack == SCTFER_HANDLER_ACK_SPECIAL));
+
+  /* Return to original state */
+  reval(valid_addr, RT_R | RT_W);
+
+  return mistakes;
+}
+
 int sctfer_tests(void) {
   int sctfer_mistakes = 0;
 
@@ -1145,6 +1261,7 @@ int sctfer_tests(void) {
   sctfer_mistakes += sctfer_exception_addr();
   sctfer_mistakes += sctfer_exception_perms();
   sctfer_mistakes += sctfer_exception_sdid();
+  sctfer_mistakes += sctfer_exception_invcell();
 
   return sctfer_mistakes;
 }
