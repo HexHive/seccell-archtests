@@ -87,12 +87,12 @@ enum trap_cause {
 
   TRAP_TEST = 0,
 
-  /* Traps for SCCOUNT testing */
-  TRAP_SCCOUNT_BEGIN,
-  TRAP_SCCOUNT_PERM_EXCEPTION = TRAP_SCCOUNT_BEGIN,
-  TRAP_SCCOUNT_ADDR_EXCEPTION,
-  TRAP_SCCOUNT_CELL_STATE,
-  TRAP_SCCOUNT_END,
+  /* Traps for SCExcl testing */
+  TRAP_SCEXCL_BEGIN,
+  TRAP_SCEXCL_PERM_EXCEPTION = TRAP_SCEXCL_BEGIN,
+  TRAP_SCEXCL_ADDR_EXCEPTION,
+  TRAP_SCEXCL_CELL_STATE,
+  TRAP_SCEXCL_END,
 
   TRAP_SDSWITCH_BEGIN,
   TRAP_SDSWITCH_SDID = TRAP_SDSWITCH_BEGIN,
@@ -139,7 +139,7 @@ void setup_trap_handler(void) {
       :: [ctx] "r" (&ctx));
 }
 
-#define SCCOUNT_HANDLER_ACK_SPECIAL   0xc007
+#define SCEXCL_HANDLER_ACK_SPECIAL   0xc007
 #define SDSWITCH_HANDLER_ACK_SPECIAL  0xc017
 #define SCINREVAL_HANDLER_ACK_SPECIAL 0xd0d0
 #define SCPROT_HANDLER_ACK_SPECIAL    0xf0d0
@@ -198,8 +198,8 @@ void c_trap_handler(void) {
     return;
   }
 
-  if((trap_id >= TRAP_SCCOUNT_BEGIN) && (trap_id < TRAP_SCCOUNT_END))
-    ack_magic = SCCOUNT_HANDLER_ACK_SPECIAL;
+  if((trap_id >= TRAP_SCEXCL_BEGIN) && (trap_id < TRAP_SCEXCL_END))
+    ack_magic = SCEXCL_HANDLER_ACK_SPECIAL;
   else if((trap_id >= TRAP_SDSWITCH_BEGIN) && (trap_id < TRAP_SDSWITCH_END))
     ack_magic = SDSWITCH_HANDLER_ACK_SPECIAL;
   else if((trap_id >= TRAP_SCINVAL_REVAL_BEGIN) && (trap_id < TRAP_SCINVAL_REVAL_END))
@@ -215,7 +215,7 @@ void c_trap_handler(void) {
   {
   case TRAP_TEST:
   
-  case TRAP_SCCOUNT_PERM_EXCEPTION:
+  case TRAP_SCEXCL_PERM_EXCEPTION:
   case TRAP_SCINVAL_REVAL_PERMS:
   case TRAP_SCPROT_PERM:
   case TRAP_SCGRANT_PERM:
@@ -223,7 +223,7 @@ void c_trap_handler(void) {
     exp_type = RISCV_EXCP_SECCELL_ILL_PERM;
     break;
 
-  case TRAP_SCCOUNT_ADDR_EXCEPTION:
+  case TRAP_SCEXCL_ADDR_EXCEPTION:
   case TRAP_SCINVAL_REVAL_ADDR:
   case TRAP_SCPROT_ADDR:
   case TRAP_SCGRANT_ADDR:
@@ -231,7 +231,7 @@ void c_trap_handler(void) {
     exp_type = RISCV_EXCP_SECCELL_ILL_ADDR;
     break;
   
-  case TRAP_SCCOUNT_CELL_STATE:
+  case TRAP_SCEXCL_CELL_STATE:
   case TRAP_SCINVAL_REVAL_CELL_STATE:
   case TRAP_SCPROT_INVCELL:
   case TRAP_SCGRANT_INVCELL:
@@ -313,7 +313,7 @@ static uint8_t invalid_perms_parameters[] = {
 
 int scexcl_exception_perms() {
   int mistakes = 0;
-  trap_id = TRAP_SCCOUNT_PERM_EXCEPTION;
+  trap_id = TRAP_SCEXCL_PERM_EXCEPTION;
 
   for(uint8_t i = 0; i < sizeof(invalid_perms_parameters); i++) {
     trap_mistakes = 0;
@@ -323,7 +323,7 @@ int scexcl_exception_perms() {
                       | test_perm;
     SCExcl(cells[0].va_start, invalid_perms_parameters[i]);
 
-    CHECK(!trap_mistakes && (handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
+    CHECK(!trap_mistakes && (handler_ack == SCEXCL_HANDLER_ACK_SPECIAL));
   }
 
   return mistakes;
@@ -335,7 +335,7 @@ static uint64_t invalid_addresses[] = {
   };
 int scexcl_exception_addr() {
   int mistakes = 0;
-  trap_id = TRAP_SCCOUNT_ADDR_EXCEPTION;
+  trap_id = TRAP_SCEXCL_ADDR_EXCEPTION;
 
   for(uint8_t i = 0; i < sizeof(invalid_addresses)/sizeof(invalid_addresses[0]); i++) {
     trap_mistakes = 0;
@@ -343,7 +343,7 @@ int scexcl_exception_addr() {
     handler_ack = 0;
     SCExcl(invalid_addresses[i], RT_R);
 
-    CHECK(!trap_mistakes && (handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
+    CHECK(!trap_mistakes && (handler_ack == SCEXCL_HANDLER_ACK_SPECIAL));
   }
 
   return mistakes;
@@ -356,12 +356,12 @@ int scexcl_exception_invcell(void) {
 
   /* Invalidate cell, then test exception */
   inval(valid_addr);
-  trap_id = TRAP_SCCOUNT_CELL_STATE;
+  trap_id = TRAP_SCEXCL_CELL_STATE;
   handler_ack = 0;
   trap_mistakes = 0;
   expected_stval = 0;
   SCExcl(valid_addr, RT_R);
-  CHECK(!trap_mistakes && (handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
+  CHECK(!trap_mistakes && (handler_ack == SCEXCL_HANDLER_ACK_SPECIAL));
 
   /* Return to original state */
   reval(valid_addr, RT_R | RT_W);
@@ -415,6 +415,7 @@ int sdswitch_test_functionality_jalrs() {
   int mistakes = 0;
   trap_id = INVALID_CAUSE;
   uint64_t tgt_usid, tgt_addr;
+  register uint64_t ra asm ("ra");
 
   /* Start at SD 1, switch to SD 2, then back to SD 1 */
   CHECK(get_usid() == 1);
@@ -424,7 +425,7 @@ int sdswitch_test_functionality_jalrs() {
   
   tgt_usid = 2;
   tgt_addr = (uint64_t)&&sdswitch_test_functionality0;
-  jalrs(tgt_usid, tgt_addr);
+  jalrs(ra, tgt_usid, tgt_addr);
   nop(5);
 sdswitch_test_functionality0:
   entry(_sdswitch_test_functionality0);
@@ -433,7 +434,7 @@ sdswitch_test_functionality0:
 
   tgt_usid = 1;
   tgt_addr = (uint64_t)&&sdswitch_test_functionality1;
-  jalrs(tgt_usid, tgt_addr);
+  jalrs(ra, tgt_usid, tgt_addr);
   nop(2);
 sdswitch_test_functionality1:
   entry(_sdswitch_test_functionality1);
@@ -447,6 +448,7 @@ int sdswitch_exception_sdid() {
   int mistakes = 0;
   trap_id = TRAP_SDSWITCH_SDID;
   uint64_t tgt_usid, tgt_addr;
+  register uint64_t ra asm ("ra");
 
   /* Try to switch to secdiv 0, and check fault */
   CHECK(get_usid() == 1);
@@ -477,7 +479,7 @@ int sdswitch_exception_sdid() {
   tgt_addr = (uint64_t)&&sdswitch_test_exception_sdid2;
   handler_ack = 0;
   trap_mistakes = 0;
-  jalrs(tgt_usid, tgt_addr);
+  jalrs(ra, tgt_usid, tgt_addr);
   nop(7);
 sdswitch_test_exception_sdid2:
   entry(_sdswitch_test_exception_sdid2);
@@ -490,6 +492,7 @@ int sdswitch_exception_addr(void) {
   int mistakes = 0;
   trap_id = TRAP_SDSWITCH_ADDR;
   uint64_t tgt_usid, tgt_addr;
+  register uint64_t ra asm ("ra");
 
   /* Try to switch to instruction before entry and check fault */
   CHECK(get_usid() == 1);
@@ -510,7 +513,7 @@ sdswitch_test_exception_addr0:
   expected_stval = tgt_addr;
   handler_ack = 0;
   trap_mistakes = 0;
-  jalrs(tgt_usid, tgt_addr);
+  jalrs(ra, tgt_usid, tgt_addr);
   nop(7);
 sdswitch_test_exception_addr1:
   entry(_sdswitch_test_exception_addr1);

@@ -85,13 +85,13 @@ bool is_valid_cell(uint128_t cell)
       );                   \
    } while (0)
 
-#define jalrs(sd_reg, dest_reg)                      \
-   do {                                              \
-      asm volatile (                                 \
-         "jalrs x1, %[dest], %[sd]"                  \
-         :: [dest] "r" (dest_reg), [sd] "r" (sd_reg) \
-         : "x1"                                      \
-      );                                             \
+#define jalrs(ret_reg, dest_reg, sd_reg)            \
+   do {                                             \
+      asm volatile (                                \
+         "jalrs %[ret], %[sd], %[dest]"             \
+         : [ret] "=r" (ret_reg)                     \
+         : [dest] "r" (dest_reg), [sd] "r" (sd_reg) \
+      );                                            \
    } while (0)
 
 #define jals(sd_reg, dest_label)    \
