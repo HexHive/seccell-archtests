@@ -1,0 +1,53 @@
+set confirm off
+set output-radix 16
+file fpga_test
+target remote :1234
+
+tb _entry
+c
+
+tb first_va_inst
+c
+si
+
+set $corr = correct
+tb *($corr + 0x100000000)
+commands
+silent
+print "correct"
+q
+end
+
+set $wron = wrong
+tb *($wron + 0x100000000)
+commands
+silent
+print "wrong"
+print $s0
+c
+end
+
+set $badex = bad_exception
+tb *($badex + 0x100000000)
+commands
+silent
+print "bad exception"
+printf "ctx.sepc = %lx\n", *(unsigned long *)((unsigned long)&ctx + 0x100000000 + 264)
+printf "ctx.ra = %lx\n",   *(unsigned long *)((unsigned long)&ctx + 0x100000000 + 8)
+end
+
+set $handler = exception_handler
+b *($handler + 0x100000000) if ($usid != 0) || ($urid == 0)
+commands
+silent
+print "Invalid US/RID in exception handler (probably nested exception)"
+c
+end
+
+b *0x180044388 if $urid == 0
+commands
+silent
+print "Invalid URID in return from exveption handler"
+end
+
+

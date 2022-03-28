@@ -1,0 +1,28 @@
+This repo is supposed to contain tests embodying the correct behavior of the SecureCells instructions.
+
+### Description
+
+TODO: Describe how bootstrap works
+TODO: Describe how tests (particularly exceptions) work.
+
+### How to run
+
+Compile with `make`.
+
+On one terminal, run qemu:
+
+`qemu-system-riscv64 -machine virt_sc -bios <path to fw_dynamic.elf> -kernel ./fpga_test -nographic -s -S`
+
+QEMU should be able to run these tests with either machine `virt` or machine `virt_sc`. For `virt`, the OpenSBI firmware should emulate the dynamic SC instructions.
+
+On the other terminal, debug with gdb:
+
+`riscv64-unknown-elf-gdb -x gdb_script`
+
+The script is set up to output `correct` or `wrong` based on whether all tests ran successfully or not. The script also catches unexpected exceptions `bad exception`.
+
+### Modifying tests
+
+Be careful about modifying tests, since the code runs partially in physical addressing modes, and partially in virtual addressing. Therefore, care has to be taken to keep the code position-independent. Everything except `init.c` and `bootstrap.S` should exclusively use virtual addresses and have `static` global variables only. This ensures that there is no PLT, and all addresses are pc-relative.
+
+
