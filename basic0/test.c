@@ -266,24 +266,29 @@ void c_trap_handler(void) {
 /******************************************
  * Wrappers for SecCell instructions
  *****************************************/
-uint64_t SCCount(uint64_t addr, uint8_t perm) {
+bool SCExcl(uint64_t addr, uint8_t perm) {
   uint64_t ret;
-  count(ret, addr, perm);
-  return ret;
+  excl(ret, addr, perm);
+  return (ret == 0);
 }
 
 /******************************************
- * Tests for SCCount instruction
+ * Tests for SCExcl instruction
  *****************************************/
-/* Testing correctness of sccount instructions for legal operands */
-int sccount_test_correctness() {
+/* Testing correctness of SCExcl instructions for legal operands */
+int scexcl_test_correctness() {
   int mistakes = 0;
   trap_id = INVALID_CAUSE;
 
   CHECK(get_usid() == 1);
   CHECK(get_urid() == 0);
+
+
   for(int cidx = 0; cidx < N_CELLS; cidx++) {
     int rcount = 0, wcount = 0, xcount = 0;
+    bool r = (cperms[get_usid()][cidx] & RT_R) == RT_R;
+    bool w = (cperms[get_usid()][cidx] & RT_W) == RT_W;
+    bool x = (cperms[get_usid()][cidx] & RT_X) == RT_X;
 
     for(int sdidx = 1; sdidx < M_SDS; sdidx++){
       if((cperms[sdidx][cidx] & RT_R) == RT_R) rcount++;
@@ -291,21 +296,22 @@ int sccount_test_correctness() {
       if((cperms[sdidx][cidx] & RT_X) == RT_X) xcount++;
     }
 
-    CHECK(SCCount(cells[cidx].va_start, RT_R) == rcount);
-    CHECK(SCCount(cells[cidx].va_start, RT_W) == wcount);
-    CHECK(SCCount(cells[cidx].va_start, RT_X) == xcount);
+    /* Either no SecDiv has access or the current SecDiv is the only one */
+    CHECK(SCExcl(cells[cidx].va_start, RT_R) == ((rcount == 0) || (rcount == 1 && r)));
+    CHECK(SCExcl(cells[cidx].va_start, RT_W) == ((wcount == 0) || (wcount == 1 && w)));
+    CHECK(SCExcl(cells[cidx].va_start, RT_X) == ((xcount == 0) || (xcount == 1 && x)));
   }
 
   return mistakes;
 }
 
 
-/* Testing exveptions for sccount with illegal permissions */
+/* Testing exceptions for SCExcl with illegal permissions */
 static uint8_t invalid_perms_parameters[] = {
     0x0, 0x1, 0x10, 0x20, 0x40, 0x80
   };
 
-int sccount_exception_perms() {
+int scexcl_exception_perms() {
   int mistakes = 0;
   trap_id = TRAP_SCCOUNT_PERM_EXCEPTION;
 
@@ -315,7 +321,7 @@ int sccount_exception_perms() {
     uint8_t test_perm = invalid_perms_parameters[i];
     expected_stval = (((test_perm == 0)? 1: 0) << 8)
                       | test_perm;
-    SCCount(cells[0].va_start, invalid_perms_parameters[i]);
+    SCExcl(cells[0].va_start, invalid_perms_parameters[i]);
 
     CHECK(!trap_mistakes && (handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
   }
@@ -323,11 +329,11 @@ int sccount_exception_perms() {
   return mistakes;
 }
 
-/* Testing exceptioons for sccount with invalid addresses */
+/* Testing exceptions for SCExcl with invalid addresses */
 static uint64_t invalid_addresses[] = {
     0x0, 0xf1f1d0d0
   };
-int sccount_exception_addr() {
+int scexcl_exception_addr() {
   int mistakes = 0;
   trap_id = TRAP_SCCOUNT_ADDR_EXCEPTION;
 
@@ -335,7 +341,7 @@ int sccount_exception_addr() {
     trap_mistakes = 0;
     expected_stval = invalid_addresses[i];
     handler_ack = 0;
-    SCCount(invalid_addresses[i], RT_R);
+    SCExcl(invalid_addresses[i], RT_R);
 
     CHECK(!trap_mistakes && (handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
   }
@@ -343,7 +349,7 @@ int sccount_exception_addr() {
   return mistakes;
 }
 
-int sccount_exception_invcell(void) {
+int scexcl_exception_invcell(void) {
   int mistakes = 0;
 
   uint64_t valid_addr = cells[3].va_start;
@@ -354,7 +360,7 @@ int sccount_exception_invcell(void) {
   handler_ack = 0;
   trap_mistakes = 0;
   expected_stval = 0;
-  SCCount(valid_addr, RT_R);
+  SCExcl(valid_addr, RT_R);
   CHECK(!trap_mistakes && (handler_ack == SCCOUNT_HANDLER_ACK_SPECIAL));
 
   /* Return to original state */
@@ -363,15 +369,15 @@ int sccount_exception_invcell(void) {
   return mistakes;
 }
 
-int sccount_tests() {
-  int sccount_mistakes = 0;
+int scexcl_tests() {
+  int scexcl_mistakes = 0;
 
-  sccount_mistakes += sccount_test_correctness();
-  sccount_mistakes += sccount_exception_perms();
-  sccount_mistakes += sccount_exception_addr();
-  sccount_mistakes += sccount_exception_invcell();
+  scexcl_mistakes += scexcl_test_correctness();
+  scexcl_mistakes += scexcl_exception_perms();
+  scexcl_mistakes += scexcl_exception_addr();
+  scexcl_mistakes += scexcl_exception_invcell();
 
-  return sccount_mistakes;
+  return scexcl_mistakes;
 }
 
 /******************************************
@@ -1205,7 +1211,7 @@ void test(void) {
   CHECK(trap_mistakes == 0xdeadbeef);
 
   /* Begin actual testing */
-  mistakes += sccount_tests();
+  mistakes += scexcl_tests();
   mistakes += sdswitch_tests();
   mistakes += scinval_reval_tests();
   mistakes += scprotect_tests();

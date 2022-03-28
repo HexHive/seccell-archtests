@@ -152,13 +152,13 @@ bool is_valid_cell(uint128_t cell)
       );                                                             \
    } while (0)
 
-#define count(cnt_reg, addr_reg, perms_imm)                          \
+#define excl(success_reg, addr_reg, perms_imm)                       \
    do {                                                              \
       /* Attention: variable might shadow name from outer scope */   \
       uint64_t tmp_perms = (perms_imm);                              \
       asm (                                                          \
-         "count %[cnt], %[addr], %[perms]"                           \
-         : [cnt] "=r" (cnt_reg)                                      \
+         "excl %[excl], %[addr], %[perms]"                           \
+         : [excl] "=r" (success_reg)                                 \
          : [addr] "r" (addr_reg), [perms] "r" (tmp_perms)            \
       );                                                             \
    } while (0)
