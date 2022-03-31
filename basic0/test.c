@@ -808,7 +808,7 @@ int scprotect_tests(void) {
   scprotect_mistakes += scprotect_test_functionality();
   scprotect_mistakes += scprotect_exception_addr();
   scprotect_mistakes += scprotect_exception_perms();
-  scprotect_mistakes += scprotect_exception_invcell();
+  // scprotect_mistakes += scprotect_exception_invcell();
 
   return scprotect_mistakes;
 }
@@ -1214,12 +1214,12 @@ void test(void) {
   CHECK(trap_mistakes == 0xdeadbeef);
 
   /* Begin actual testing */
-  mistakes += scexcl_tests();
+  // mistakes += scexcl_tests();
   mistakes += sdswitch_tests();
-  mistakes += scinval_reval_tests();
+  // mistakes += scinval_reval_tests();
   mistakes += scprotect_tests();
-  mistakes += scgrant_tests();
-  mistakes += sctfer_tests();
+  // mistakes += scgrant_tests();
+  // mistakes += sctfer_tests();
 
   if(mistakes)
     wrong();
