@@ -296,10 +296,16 @@ int scexcl_test_correctness() {
       if((cperms[sdidx][cidx] & RT_X) == RT_X) xcount++;
     }
 
-    /* Either no SecDiv has access or the current SecDiv is the only one */
-    CHECK(SCExcl(cells[cidx].va_start, RT_R) == ((rcount == 0) || (rcount == 1 && r)));
-    CHECK(SCExcl(cells[cidx].va_start, RT_W) == ((wcount == 0) || (wcount == 1 && w)));
-    CHECK(SCExcl(cells[cidx].va_start, RT_X) == ((xcount == 0) || (xcount == 1 && x)));
+    /* Check only for own permissions => fault otherwise */
+    if (r) {
+      CHECK(SCExcl(cells[cidx].va_start, RT_R) == (rcount == 1));
+    }
+    if (w) {
+      CHECK(SCExcl(cells[cidx].va_start, RT_W) == (wcount == 1));
+    }
+    if (x) {
+      CHECK(SCExcl(cells[cidx].va_start, RT_X) == (xcount == 1));
+    }
   }
 
   return mistakes;
