@@ -112,6 +112,15 @@ bool is_valid_cell(uint128_t cell)
       );                                                                      \
    } while (0)
 
+#define recv(addr_reg, sd_reg, perms_imm)                                    \
+   do {                                                                       \
+      asm volatile (                                                          \
+         "recv %[addr], %[sd], %[perms]"                                     \
+         :                                                                    \
+         : [addr] "r" (addr_reg), [sd] "r" (sd_reg), [perms] "i" (perms_imm)  \
+      );                                                                      \
+   } while (0)
+
 #define tfer(addr_reg, sd_reg, perms_imm)                                     \
    do {                                                                       \
       asm volatile (                                                          \

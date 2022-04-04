@@ -38,7 +38,6 @@ void write_cell(uint64_t *addr, uint64_t va, uint64_t va_end, uint64_t pa) {
 void setup_vm(void) {
   memset(ptable, 0, sizeof(ptable));
 
-  set_ptable(ptable + VA_OFFSET);
   // Set N = 5, M = 3, T = 1
   uint32_t T = 1;
   uint32_t R = 4;
@@ -49,6 +48,7 @@ void setup_vm(void) {
   ptable_meta[2] = M;
   ptable_meta[1] = T;
   ptable_meta[0] = R;
+  set_ptable(ptable + VA_OFFSET, M, N, R, T);
 
   uint64_t va_start, va_end, pa;
 

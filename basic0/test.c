@@ -2,6 +2,7 @@
 #include "common.h"
 #include "test.h"
 #include "seccell.h"
+#include "util.h"
 
 struct cell {
   uint64_t va_start, va_end, pa;
@@ -55,12 +56,20 @@ struct context {
  *****************************************/
 #define N_CELLS 4
 #define M_SDS   3
+typedef struct {
+  uint32_t M, N, R, T;
+} meta_t;
 static struct cell cells[N_CELLS];
 static uint8_t cperms[M_SDS][N_CELLS];
 static uint8_t *ptable;
+static meta_t meta;
 
-void set_ptable(uint8_t *ptable_s) {
+void set_ptable(uint8_t *ptable_s, uint32_t M, uint32_t N, uint32_t R, uint32_t T) {
   ptable = ptable_s;
+  meta.N = N;
+  meta.M = M;
+  meta.T = T;
+  meta.R = R;
 }
 
 void set_cell(int cidx, uint64_t va_start, uint64_t va_end, uint64_t pa) {
@@ -551,7 +560,8 @@ int scinval_reval_functionality(void) {
   volatile uint8_t *perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
   volatile uint8_t *sup_perms_ptr = ptable + (16 * 64) + (64 * 0) + 4;
   volatile uint128_t *desc_ptr = (volatile uint128_t *)(ptable + 0x40);
-  volatile uint8_t *ptr_under_test = (uint8_t *)cells[3].va_start;
+  /* Aliases to first byte of ptable metadata */
+  volatile uint8_t *ptr_under_test = (uint8_t *)cells[3].va_start; 
   volatile uint8_t junk = 0;
 
   CHECK(get_usid() == 1);
@@ -561,7 +571,7 @@ int scinval_reval_functionality(void) {
   /* This ptr is still valid, and this dereference should not fault.
    * This byte is currently reserved by SecCells, and should be zero */
   trap_id = INVALID_CAUSE;
-  CHECK(*ptr_under_test == 0);
+  CHECK(*ptr_under_test == ptable[0]);
 
   inval(ptr_under_test);
   CHECK(get_usid() == 1);
@@ -584,7 +594,7 @@ int scinval_reval_functionality(void) {
   /* This ptr is again valid, and this dereference should not fault.
    * This byte is currently reserved by SecCells, and should be zero */
   trap_id = INVALID_CAUSE;
-  CHECK(*ptr_under_test == 0);
+  CHECK(*ptr_under_test == ptable[0]);
 
 
   inval(ptr_under_test);
@@ -597,7 +607,7 @@ int scinval_reval_functionality(void) {
   handler_ack = 0;
   trap_mistakes = 0;
   expected_stval = (uint64_t)ptr_under_test;
-  *ptr_under_test = 0;
+  *ptr_under_test = ptable[0];
   CHECK(!trap_mistakes && (handler_ack == SCINREVAL_HANDLER_ACK_SPECIAL));
 
   reval(ptr_under_test, RT_R | RT_W);
@@ -608,7 +618,7 @@ int scinval_reval_functionality(void) {
   /* This ptr is again valid, and this dereference should not fault.
    * This byte is currently reserved by SecCells, and should be zero */
   trap_id = INVALID_CAUSE;
-  CHECK(*ptr_under_test == 0);
+  CHECK(*ptr_under_test == ptable[0]);
 
   return mistakes;
 }
@@ -814,7 +824,7 @@ int scprotect_tests(void) {
   scprotect_mistakes += scprotect_test_functionality();
   scprotect_mistakes += scprotect_exception_addr();
   scprotect_mistakes += scprotect_exception_perms();
-  // scprotect_mistakes += scprotect_exception_invcell();
+  scprotect_mistakes += scprotect_exception_invcell();
 
   return scprotect_mistakes;
 }
@@ -825,10 +835,14 @@ int scprotect_tests(void) {
 
 int scgrant_test_functionality(void) {
   int mistakes = 0;
+  int ci = 4, sdsrc = 1, sddst = 2, tmp;
 
-  volatile uint8_t *src_perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
-  volatile uint8_t *dst_perms_ptr = ptable + (16 * 64) + (64 * 2) + 4;
+  volatile uint8_t *src_perms_ptr  = PT(ptable, meta.T, sdsrc, ci);
+  volatile uint8_t *dst_perms_ptr  = PT(ptable, meta.T, sddst, ci);
+  volatile uint32_t *grant_ptr = GT(ptable, meta.R, meta.T, sdsrc, ci);
   uint64_t valid_addr = cells[3].va_start;
+  volatile uint8_t *dst_perms_ptr_alias = PT(((uint8_t *)valid_addr), meta.T, sddst, ci);
+  volatile uint32_t *grant_ptr_alias = GT(((uint8_t *)valid_addr), meta.R, meta.T, sdsrc, ci);
 
   trap_id = INVALID_CAUSE;
   CHECK(*src_perms_ptr == 0xc7);
@@ -837,30 +851,40 @@ int scgrant_test_functionality(void) {
   reval(valid_addr, RT_R | RT_W | RT_X);
   CHECK(*src_perms_ptr == 0xcf);
 
-  grant(valid_addr, 2, RT_R);
+  /* Step 1: Grant read-only permission and test it */
+  grant(valid_addr, sddst, RT_R);
   CHECK(*src_perms_ptr == 0xcf);
-  CHECK(*dst_perms_ptr == 0xc3);
+  CHECK(*grant_ptr == G(sddst, RT_R));
+  CHECK(*dst_perms_ptr == 0xc1);
 
+  tmp = sddst;
+  jals(tmp, sdgrant_test_functionality0);
+  entry(sdgrant_test_functionality0);
+  recv(valid_addr, sdsrc, RT_R);
+  /* Permissions  check */
+  CHECK(*dst_perms_ptr_alias == 0xc3);
+  CHECK(*grant_ptr_alias == G(SDINV, 0))
+  tmp = sdsrc;
+  jals(tmp, sdgrant_test_functionality1);
+  entry(sdgrant_test_functionality1);
+
+  /* Step 2: Grant additional write permission and test it */
   grant(valid_addr, 2, RT_W);
   CHECK(*src_perms_ptr == 0xcf);
-  CHECK(*dst_perms_ptr == 0xc7);
-
-  grant(valid_addr, 2, RT_X);
-  CHECK(*src_perms_ptr == 0xcf);
-  CHECK(*dst_perms_ptr == 0xcf);
-
+  CHECK(*grant_ptr == G(sddst, RT_W));
+  CHECK(*dst_perms_ptr == 0xc3);
+  
+  tmp = sddst;
+  jals(tmp, sdgrant_test_functionality2);
+  entry(sdgrant_test_functionality2);
+  recv(valid_addr, sdsrc, RT_W);
+  CHECK(*dst_perms_ptr_alias == 0xc7);
+  CHECK(*grant_ptr_alias == G(SDINV, 0));
   /* Reset to initial state */
-  prot(valid_addr, RT_R | RT_W);
-  uint64_t tgt_sd = 2;
-  jals(tgt_sd, scgrant_test_functionality0);
-  entry(scgrant_test_functionality0);
   prot(valid_addr, 0);
-  tgt_sd = 1;
-  jals(tgt_sd, scgrant_test_functionality1);
-  entry(scgrant_test_functionality1);
-  CHECK(*src_perms_ptr == 0xc7);
-  CHECK(*dst_perms_ptr == 0xc1);
-  CHECK(get_usid() == 1);
+  tmp = sdsrc;
+  jals(tmp, sdgrant_test_functionality3);
+  entry(sdgrant_test_functionality3);
 
   return mistakes;
 }
@@ -1000,10 +1024,10 @@ int scgrant_tests(void) {
   int scgrant_mistakes = 0;
 
   scgrant_mistakes += scgrant_test_functionality();
-  scgrant_mistakes += scgrant_exception_addr();
-  scgrant_mistakes += scgrant_exception_sdid();
-  scgrant_mistakes += scgrant_exception_perms();
-  scgrant_mistakes += scgrant_exception_invcell();
+  // scgrant_mistakes += scgrant_exception_addr();
+  // scgrant_mistakes += scgrant_exception_sdid();
+  // scgrant_mistakes += scgrant_exception_perms();
+  // scgrant_mistakes += scgrant_exception_invcell();
 
   return scgrant_mistakes;
 }
@@ -1222,9 +1246,9 @@ void test(void) {
   /* Begin actual testing */
   // mistakes += scexcl_tests();
   mistakes += sdswitch_tests();
-  // mistakes += scinval_reval_tests();
+  mistakes += scinval_reval_tests();
   mistakes += scprotect_tests();
-  // mistakes += scgrant_tests();
+  mistakes += scgrant_tests();
   // mistakes += sctfer_tests();
 
   if(mistakes)
