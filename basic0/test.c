@@ -82,9 +82,11 @@ void set_cell_perm(int sdidx, int cidx, uint8_t perm) {
   cperms[sdidx][cidx] = perm;
 }
 
+void wrong();
+
 #define CHECK(x) \
   if (!(x)) {    \
-    mistakes++;  \
+    wrong();     \
   }
 
 /******************************************
@@ -519,11 +521,14 @@ int sdswitch_exception_addr(void) {
   nop(5);
 sdswitch_test_exception_addr0:
   asm("_sdswitch_test_exception_addr0:");
+  /* This is required, otherwise the first inst in CHECK() is skipped */
+  nop(1);
   CHECK(!trap_mistakes && (handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
 
   /* Try to switch to instruction before entry with jalrs and check fault */
   CHECK(get_usid() == 1);
-  tgt_usid = 1024;
+  /* Illegal tgt should raise exception earlier */
+  tgt_usid = 2;
   tgt_addr = (uint64_t)&&sdswitch_test_exception_addr1 - 2;
   expected_stval = tgt_addr;
   handler_ack = 0;

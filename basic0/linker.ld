@@ -18,6 +18,7 @@ SECTIONS
   }
   . = 0x80044000;
   .text : {
+    *.o(.init)
     *.o(.text)
   }
 }

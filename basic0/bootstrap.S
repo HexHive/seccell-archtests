@@ -1,7 +1,7 @@
 #include "init.h"
 #include "test.h"
 
-.text
+.section .init, "ax"
 
 .global _entry
 _entry:
@@ -30,8 +30,8 @@ _entry:
   li t1, VA_OFFSET
   add t0, t0, t1
   csrw stvec, t0
-  li t0, 0
-  csrw usid, t0
+# li t0, 0
+# csrw usid, t0
   li t0, 0xf         # SATP_MODE 0xf 
   slli t0, t0, 60
   la t1, ptable
@@ -56,6 +56,11 @@ first_va_inst:
   csrw urid, t0
   li t0, 0
   csrw uxid, t0
+
+  # drop to u-mode
+  li t0, 1 << 8 # sstatus.spp
+  csrc sstatus, t0
+
 drop_to_test:
   sret
 
