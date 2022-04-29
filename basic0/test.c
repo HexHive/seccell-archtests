@@ -277,10 +277,10 @@ void c_trap_handler(void) {
 /******************************************
  * Wrappers for SecCell instructions
  *****************************************/
-bool SCExcl(uint64_t addr, uint8_t perm) {
+bool inline SCExcl(uint64_t addr, uint8_t perm) {
   uint64_t ret;
   excl(ret, addr, perm);
-  return (ret == 0);
+  return ret;
 }
 
 /******************************************
@@ -308,15 +308,12 @@ int scexcl_test_correctness() {
     }
 
     /* Check only for own permissions => fault otherwise */
-    if (r) {
+    if (r)
       CHECK(SCExcl(cells[cidx].va_start, RT_R) == (rcount == 1));
-    }
-    if (w) {
+    if (w)
       CHECK(SCExcl(cells[cidx].va_start, RT_W) == (wcount == 1));
-    }
-    if (x) {
+    if (x)
       CHECK(SCExcl(cells[cidx].va_start, RT_X) == (xcount == 1));
-    }
   }
 
   return mistakes;
@@ -1272,7 +1269,7 @@ void test(void) {
   CHECK(trap_mistakes == 0xdeadbeef);
 
   /* Begin actual testing */
-  // mistakes += scexcl_tests();
+  mistakes += scexcl_tests();
   mistakes += sdswitch_tests();
   mistakes += scinval_reval_tests();
   mistakes += scprotect_tests();

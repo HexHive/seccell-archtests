@@ -165,7 +165,7 @@ bool is_valid_cell(uint128_t cell)
    do {                                                              \
       /* Attention: variable might shadow name from outer scope */   \
       uint64_t tmp_perms = (perms_imm);                              \
-      asm (                                                          \
+      asm volatile (                                                          \
          "excl %[excl], %[addr], %[perms]"                           \
          : [excl] "=r" (success_reg)                                 \
          : [addr] "r" (addr_reg), [perms] "r" (tmp_perms)            \
@@ -174,7 +174,7 @@ bool is_valid_cell(uint128_t cell)
 
 #define csrr_usid(usid_reg)         \
    do {                             \
-      asm (                         \
+      asm volatile (                         \
          "csrr %[usid], usid"       \
          : [usid] "=r" (usid_reg)   \
          :                          \
