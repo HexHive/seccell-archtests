@@ -581,7 +581,7 @@ int scinval_reval_functionality(void) {
   inval(ptr_under_test);
   CHECK(get_usid() == 1);
   CHECK(!is_valid_cell(*desc_ptr));
-  CHECK(*perms_ptr == 0xc0);
+  CHECK(*perms_ptr == 0xc1);
   CHECK(*sup_perms_ptr == 0xce);
   /* This ptr access is now invalid, and this dereference should fault. */
   trap_id = TRAP_SCINVAL_REVAL_FUNC_TRAP;
@@ -605,7 +605,7 @@ int scinval_reval_functionality(void) {
   inval(ptr_under_test);
   CHECK(get_usid() == 1);
   CHECK(!is_valid_cell(*desc_ptr));
-  CHECK(*perms_ptr == 0xc0);
+  CHECK(*perms_ptr == 0xc1);
   CHECK(*sup_perms_ptr == 0xce);
   /* This ptr access is now invalid, and this dereference should fault. */
   trap_id = TRAP_SCINVAL_REVAL_FUNC_TRAP;
@@ -845,6 +845,7 @@ int scgrant_test_functionality(void) {
   volatile uint8_t *src_perms_ptr  = PT(ptable, meta.T, sdsrc, ci);
   volatile uint8_t *dst_perms_ptr  = PT(ptable, meta.T, sddst, ci);
   volatile uint32_t *grant_ptr = GT(ptable, meta.R, meta.T, sdsrc, ci);
+  /* valid_addr actually aliases to ptable in physical memory */
   uint64_t valid_addr = cells[3].va_start;
   volatile uint8_t *dst_perms_ptr_alias = PT(((uint8_t *)valid_addr), meta.T, sddst, ci);
   volatile uint32_t *grant_ptr_alias = GT(((uint8_t *)valid_addr), meta.R, meta.T, sdsrc, ci);
@@ -863,15 +864,15 @@ int scgrant_test_functionality(void) {
   CHECK(*dst_perms_ptr == 0xc1);
 
   tmp = sddst;
-  jals(tmp, sdgrant_test_functionality0);
-  entry(sdgrant_test_functionality0);
+  jals(tmp, scgrant_test_functionality0);
+  entry(scgrant_test_functionality0);
   recv(valid_addr, sdsrc, RT_R);
   /* Permissions  check */
   CHECK(*dst_perms_ptr_alias == 0xc3);
   CHECK(*grant_ptr_alias == G(SDINV, 0))
   tmp = sdsrc;
-  jals(tmp, sdgrant_test_functionality1);
-  entry(sdgrant_test_functionality1);
+  jals(tmp, scgrant_test_functionality1);
+  entry(scgrant_test_functionality1);
 
   /* Step 2: Grant additional write permission and test it */
   grant(valid_addr, sddst, RT_W);
@@ -880,19 +881,20 @@ int scgrant_test_functionality(void) {
   CHECK(*dst_perms_ptr == 0xc3);
   
   tmp = sddst;
-  jals(tmp, sdgrant_test_functionality2);
-  entry(sdgrant_test_functionality2);
+  jals(tmp, scgrant_test_functionality2);
+  entry(scgrant_test_functionality2);
   recv(valid_addr, sdsrc, RT_W);
   CHECK(*dst_perms_ptr_alias == 0xc7);
   CHECK(*grant_ptr_alias == G(SDINV, 0));
   /* Reset sddst to initial state */
   prot(valid_addr, 0);
   tmp = sdsrc;
-  jals(tmp, sdgrant_test_functionality3);
-  entry(sdgrant_test_functionality3);
+  jals(tmp, scgrant_test_functionality3);
+  entry(scgrant_test_functionality3);
   /* Reset sddst to initial state */
   prot(valid_addr, RT_R | RT_W);
   CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
 
   return mistakes;
 }
@@ -900,8 +902,8 @@ int scgrant_test_functionality(void) {
 int scgrant_exception_addr(void) {
   int mistakes = 0;
   int ci = 4, sdsrc = 1, sddst = 2;
-  volatile uint8_t *src_perms_ptr = PT(ptable, meta.T, 1, ci);
-  volatile uint8_t *dst_perms_ptr = PT(ptable, meta.T, 2, ci);
+  volatile uint8_t *src_perms_ptr = PT(ptable, meta.T, sdsrc, ci);
+  volatile uint8_t *dst_perms_ptr = PT(ptable, meta.T, sddst, ci);
   volatile uint32_t *grant_ptr = GT(ptable, meta.R, meta.T, sdsrc, ci);
   CHECK(*src_perms_ptr == 0xc7);
   CHECK(*dst_perms_ptr == 0xc1);
@@ -917,6 +919,7 @@ int scgrant_exception_addr(void) {
     expected_stval = faulty_addr;
     grant(faulty_addr, sddst, RT_R);
     CHECK(!trap_mistakes && (handler_ack == SCGRANT_HANDLER_ACK_SPECIAL));
+    CHECK(*grant_ptr == G(SDINV, 0));
   }
   CHECK(*src_perms_ptr == 0xc7);
   CHECK(*dst_perms_ptr == 0xc1);
@@ -944,6 +947,8 @@ int scgrant_exception_sdid(void) {
     grant(valid_addr, tgt_sd, RT_R);
     CHECK(!trap_mistakes && (handler_ack == SCGRANT_HANDLER_ACK_SPECIAL));
   }
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
 
   return mistakes;
 }
@@ -951,8 +956,8 @@ int scgrant_exception_sdid(void) {
 int scgrant_exception_perms(void) {
   int mistakes = 0;
   int ci = 4, sdsrc = 1, sddst = 2;
-  volatile uint8_t *src_perms_ptr = PT(ptable, meta.T, 1, ci);
-  volatile uint8_t *dst_perms_ptr = PT(ptable, meta.T, 2, ci);
+  volatile uint8_t *src_perms_ptr = PT(ptable, meta.T, sdsrc, ci);
+  volatile uint8_t *dst_perms_ptr = PT(ptable, meta.T, sddst, ci);
   uint64_t valid_addr = cells[3].va_start;
   CHECK(*src_perms_ptr == 0xc7);
   CHECK(*dst_perms_ptr == 0xc1);
@@ -1001,8 +1006,14 @@ int scgrant_exception_perms(void) {
 int scgrant_exception_invcell(void) {
   int mistakes = 0;
 
+  int ci = 4, sdsrc = 1, sddst = 2;
+  volatile uint8_t *src_perms_ptr = PT(ptable, meta.T, sdsrc, ci);
+  volatile uint8_t *dst_perms_ptr = PT(ptable, meta.T, sddst, ci);
   uint64_t valid_addr = cells[3].va_start;
   uint64_t tgt_sd = 2;
+
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
 
   /* Invalidate cell, then test exception */
   inval(valid_addr);
@@ -1015,6 +1026,9 @@ int scgrant_exception_invcell(void) {
 
   /* Return to original state */
   reval(valid_addr, RT_R | RT_W);
+
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
 
   return mistakes;
 }
