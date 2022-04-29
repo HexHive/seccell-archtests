@@ -1051,50 +1051,75 @@ int scgrant_tests(void) {
 
 int sctfer_test_functionality(void) {
   int mistakes = 0;
+  int ci = 4, sdsrc = 1, sddst = 2, tmp;
 
-  volatile uint8_t *perms_sd1 = ptable + (16 * 64) + (64 * 1) + 4;
-  volatile uint8_t *perms_sd2 = ptable + (16 * 64) + (64 * 2) + 4;
-  uint64_t valid_addr = cells[3].va_start, tgt_sd = 2;
+  volatile uint8_t *src_perms_ptr = PT(ptable, meta.T, sdsrc, ci);
+  volatile uint8_t *dst_perms_ptr = PT(ptable, meta.T, sddst, ci);
+  volatile uint32_t *grant_ptr = GT(ptable, meta.R, meta.T, sdsrc, ci);
+  uint64_t valid_addr = cells[3].va_start;
+  /* valid_addr actually aliases to ptable in physical memory */
+  volatile uint8_t *dst_perms_ptr_alias = PT(((uint8_t *)valid_addr), meta.T, sddst, ci);
+  volatile uint32_t *grant_ptr_alias = GT(((uint8_t *)valid_addr), meta.R, meta.T, sdsrc, ci);
 
   /* Check initial state */
-  CHECK(*perms_sd1 == 0xc7);
-  CHECK(*perms_sd2 == 0xc1);
+  trap_id = INVALID_CAUSE;
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
+  inval(valid_addr);
+  reval(valid_addr, RT_R | RT_W | RT_X);
+  CHECK(*src_perms_ptr == 0xcf);
   CHECK(get_usid() == 1);
 
   /* Check one transfer */
-  tfer(valid_addr, tgt_sd, RT_R | RT_W);
-  CHECK(*perms_sd1 == 0xc1);
-  CHECK(*perms_sd2 == 0xc7);
+  tfer(valid_addr, sddst, RT_R);
+  CHECK(*src_perms_ptr == 0xc1);
+  CHECK(*grant_ptr == G(sddst, RT_R));
+  CHECK(*dst_perms_ptr == 0xc1);
   CHECK(get_usid() == 1);
 
-  /* Restore to initial state */
-  jals(tgt_sd, sctfer_test_functionality0);
+  tmp = sddst;
+  jals(tmp, sctfer_test_functionality0);
   entry(sctfer_test_functionality0);
-  inval(valid_addr);
-  tgt_sd = 1;
-  jals(tgt_sd, sctfer_test_functionality1);
+  recv(valid_addr, sdsrc, RT_R);
+  /* Permissions  check */
+  CHECK(*dst_perms_ptr_alias == 0xc3);
+  CHECK(*grant_ptr_alias == G(SDINV, 0))
+  tmp = sdsrc;
+  jals(tmp, sctfer_test_functionality1);
   entry(sctfer_test_functionality1);
+
+  /* Restore to initial state */
+  tmp = sddst;
+  jals(tmp, sctfer_test_functionality2);
+  entry(sctfer_test_functionality2);
+  inval(valid_addr);
+  tmp = sdsrc;
+  jals(tmp, sctfer_test_functionality3);
+  entry(sctfer_test_functionality3);
   reval(valid_addr, RT_R | RT_W);
 
   /* Check initial state */
-  CHECK(*perms_sd1 == 0xc7);
-  CHECK(*perms_sd2 == 0xc1);
+  CHECK(*src_perms_ptr == 0xc7);
+  CHECK(*dst_perms_ptr == 0xc1);
+  CHECK(*grant_ptr_alias == G(SDINV, 0))
   CHECK(get_usid() == 1);
 
   /* Check another transfer */
-  tgt_sd = 2;
-  tfer(valid_addr, tgt_sd, RT_R );
-  CHECK(*perms_sd1 == 0xc1);
-  CHECK(*perms_sd2 == 0xc3);
+  tfer(valid_addr, sddst, RT_R | RT_W);
+  CHECK(*src_perms_ptr == 0xc1);
+  CHECK(*grant_ptr == G(sddst, RT_R | RT_W));
+  CHECK(*dst_perms_ptr == 0xc1);
   CHECK(get_usid() == 1);
 
   /* Restore to initial state */
-  jals(tgt_sd, sctfer_test_functionality2);
-  entry(sctfer_test_functionality2);
+  tmp = sddst;
+  jals(tmp, sctfer_test_functionality4);
+  entry(sctfer_test_functionality4);
+  recv(valid_addr, sdsrc, RT_R | RT_W);
   inval(valid_addr);
-  tgt_sd = 1;
-  jals(tgt_sd, sctfer_test_functionality3);
-  entry(sctfer_test_functionality3);
+  tmp = sdsrc;
+  jals(tmp, sctfer_test_functionality5);
+  entry(sctfer_test_functionality5);
   reval(valid_addr, RT_R | RT_W);
 
   return mistakes;
@@ -1151,16 +1176,6 @@ int sctfer_exception_perms(void) {
   handler_ack = 0;
   trap_mistakes = 0;
   expected_stval = (2 << 8) | perms;
-  tfer(valid_addr, tgt_sd, perms);
-  CHECK(!trap_mistakes && (handler_ack == SCTFER_HANDLER_ACK_SPECIAL));
-
-  trap_id = TRAP_SCTFER_PERM;
-  perms = RT_R | RT_W;
-  handler_ack = 0;
-  trap_mistakes = 0;
-  expected_stval = (3 << 8) | perms;
-  grant(valid_addr, tgt_sd, RT_R);
-  /* The prev grant means that the target already has read permissions */
   tfer(valid_addr, tgt_sd, perms);
   CHECK(!trap_mistakes && (handler_ack == SCTFER_HANDLER_ACK_SPECIAL));
 
@@ -1262,7 +1277,7 @@ void test(void) {
   mistakes += scinval_reval_tests();
   mistakes += scprotect_tests();
   mistakes += scgrant_tests();
-  // mistakes += sctfer_tests();
+  mistakes += sctfer_tests();
 
   if(mistakes)
     wrong();
