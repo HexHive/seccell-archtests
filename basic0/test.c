@@ -854,6 +854,9 @@ int scgrant_test_functionality(void) {
   reval(valid_addr, RT_R | RT_W | RT_X);
   CHECK(*src_perms_ptr == 0xcf);
 
+  volatile uint8_t *ptr_under_test = (uint8_t *)valid_addr; 
+  CHECK(*ptr_under_test == ptable[0]);
+
   /* Step 1: Grant read-only permission and test it */
   grant(valid_addr, sddst, RT_R);
   CHECK(*src_perms_ptr == 0xcf);
