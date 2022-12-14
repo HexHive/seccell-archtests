@@ -555,12 +555,13 @@ int sdswitch_tests() {
  *****************************************/
 int scinval_reval_functionality(void) {
   int mistakes = 0;
+  int ci = 4, sdself = 1, sdsup = 0;
 
   /* We will repeatedly invalidate and revalidate the 
    * cell 4, which aliases to ptable:
    * RW -> inval -> reval R -> inval -> reval RW */
-  volatile uint8_t *perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
-  volatile uint8_t *sup_perms_ptr = ptable + (16 * 64) + (64 * 0) + 4;
+  volatile uint8_t *perms_ptr = PT(ptable, meta.T, sdself, ci);
+  volatile uint8_t *sup_perms_ptr = PT(ptable, meta.T, sdsup, ci);
   volatile uint128_t *desc_ptr = (volatile uint128_t *)(ptable + 0x40);
   /* Aliases to first byte of ptable metadata */
   volatile uint8_t *ptr_under_test = (uint8_t *)cells[3].va_start; 
@@ -723,8 +724,9 @@ int scinval_reval_tests(void) {
  *****************************************/
 int scprotect_test_functionality(void) {
   int mistakes = 0;
+  int ci = 4, sdself = 1;
 
-  volatile uint8_t *perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
+  volatile uint8_t *perms_ptr = PT(ptable, meta.T, sdself, ci);
   uint64_t valid_addr = cells[3].va_start;
 
   trap_id = INVALID_CAUSE;
@@ -1146,9 +1148,10 @@ int sctfer_exception_addr(void) {
 
 int sctfer_exception_perms(void) {
   int mistakes = 0;
+  int ci = 4, sdsrc = 1, sddst = 2;
 
-  volatile uint8_t *src_perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
-  volatile uint8_t *dst_perms_ptr = ptable + (16 * 64) + (64 * 2) + 4;
+  volatile uint8_t *src_perms_ptr = PT(ptable, meta.T, sdsrc, ci);
+  volatile uint8_t *dst_perms_ptr = PT(ptable, meta.T, sddst, ci);
   uint64_t valid_addr = cells[3].va_start;
   CHECK(*src_perms_ptr == 0xc7);
   CHECK(*dst_perms_ptr == 0xc1);
@@ -1196,9 +1199,10 @@ int sctfer_exception_perms(void) {
 
 int sctfer_exception_sdid(void) {
   int mistakes = 0;
+  int ci = 4, sdsrc = 1, sddst = 2;
 
-  volatile uint8_t *src_perms_ptr = ptable + (16 * 64) + (64 * 1) + 4;
-  volatile uint8_t *dst_perms_ptr = ptable + (16 * 64) + (64 * 2) + 4;
+  volatile uint8_t *src_perms_ptr = PT(ptable, meta.T, sdsrc, ci);
+  volatile uint8_t *dst_perms_ptr = PT(ptable, meta.T, sddst, ci);
   uint64_t valid_addr = cells[3].va_start;
   CHECK(*src_perms_ptr == 0xc7);
   CHECK(*dst_perms_ptr == 0xc1);
