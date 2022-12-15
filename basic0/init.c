@@ -38,11 +38,11 @@ void write_cell(uint64_t *addr, uint64_t va, uint64_t va_end, uint64_t pa) {
 void setup_vm(void) {
   memset(ptable, 0, sizeof(ptable));
 
-  // Set N = 5, M = 3, T = 1
+  // Set N = 6, M = 3, T = 1
   uint32_t T = 1;
   uint32_t R = 4;
-  uint32_t M = 3;
-  uint32_t N = 5;
+  uint32_t M = M_SDS;
+  uint32_t N = N_CELLS + 1;
   uint32_t *ptable_meta = (uint32_t *) ptable;
   ptable_meta[3] = N;
   ptable_meta[2] = M;
@@ -80,21 +80,31 @@ void setup_vm(void) {
   write_cell((uint64_t *)&ptable[0x40], va_start, va_end - 1, pa);
   set_cell(3, va_start, va_end - 1, pa);
 
-  /* Permissions for supervisor: rwx (cf), r-x (cb), rwx (cf), rwx (cf) */
+  /* Fifth cell, used as a code box, partially aliasing with third cell */
+  pa = (uint64_t)ptable + RAM_SIZE - 0x4000;
+  va_start = pa + 2 * VA_OFFSET;
+  va_end   = va_start + 0x4000;
+  write_cell((uint64_t *)&ptable[0x50], va_start, va_end - 1, pa);
+  set_cell(4, va_start, va_end - 1, pa);
+
+  /* Permissions for supervisor: rwx (cf), r-x (cb), rwx (cf), rwx (cf), rwx (cf) */
   set_cell_perm(0, 0, *(PT(ptable, T, 0, 1)) = 0xcf);
   set_cell_perm(0, 1, *(PT(ptable, T, 0, 2)) = 0xcb);
   set_cell_perm(0, 2, *(PT(ptable, T, 0, 3)) = 0xcf);
   set_cell_perm(0, 3, *(PT(ptable, T, 0, 4)) = 0xcf);
-  /* Permissions for secdiv SD1: rw- (c7), r-x (cb), rw- (c7), rw- (c7) */
+  set_cell_perm(0, 4, *(PT(ptable, T, 0, 5)) = 0xcf);
+  /* Permissions for secdiv SD1: rw- (c7), r-x (cb), rw- (c7), rw- (c7), rw (c7) */
   set_cell_perm(1, 0, *(PT(ptable, T, 1, 1)) = 0xc7);
   set_cell_perm(1, 1, *(PT(ptable, T, 1, 2)) = 0xcb);
   set_cell_perm(1, 2, *(PT(ptable, T, 1, 3)) = 0xc7);
   set_cell_perm(1, 3, *(PT(ptable, T, 1, 4)) = 0xc7);
-  /* Permissions for secdiv SD2: --- (c1), r-x (cb), rw- (c7), --- (c1) */
+  set_cell_perm(1, 4, *(PT(ptable, T, 1, 5)) = 0xc7);
+  /* Permissions for secdiv SD2: --- (c1), r-x (cb), rw- (c7), --- (c1), rw (c7) */
   set_cell_perm(2, 0, *(PT(ptable, T, 2, 1)) = 0xc1);
   set_cell_perm(2, 1, *(PT(ptable, T, 2, 2)) = 0xcb);
   set_cell_perm(2, 2, *(PT(ptable, T, 2, 3)) = 0xc7);
   set_cell_perm(2, 3, *(PT(ptable, T, 2, 4)) = 0xc1);
+  set_cell_perm(2, 4, *(PT(ptable, T, 2, 5)) = 0xc7);
 
   /* Set up GTable with all invalid entries */
   for(int sd = 0; sd < M; sd++) 

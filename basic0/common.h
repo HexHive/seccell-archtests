@@ -10,3 +10,6 @@
 
 
 typedef unsigned __int128 uint128_t;
+
+#define N_CELLS 5
+#define M_SDS   3

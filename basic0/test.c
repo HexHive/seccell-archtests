@@ -54,8 +54,6 @@ struct context {
 /******************************************
  * Cells Setup 
  *****************************************/
-#define N_CELLS 4
-#define M_SDS   3
 typedef struct {
   uint32_t M, N, R, T;
 } meta_t;
@@ -504,8 +502,9 @@ sdswitch_test_exception_sdid2:
 
 int sdswitch_exception_addr(void) {
   int mistakes = 0;
+  uint8_t *dst, *src;
   trap_id = TRAP_SDSWITCH_ADDR;
-  uint64_t tgt_usid, tgt_addr;
+  uint64_t tgt_usid, tgt_addr, dst_cell = cells[4].va_start, sz;
   register uint64_t ra asm ("ra");
 
   /* Try to switch to instruction before entry and check fault */
@@ -534,6 +533,27 @@ sdswitch_test_exception_addr0:
   nop(7);
 sdswitch_test_exception_addr1:
   entry(_sdswitch_test_exception_addr1);
+  CHECK(!trap_mistakes && (handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
+
+  /* Try to switch to SDEntry without exec permission for the target SD */
+  CHECK(get_usid() == 1);
+  /* Copy this code over to the test cell, and drop write/exec perms */
+  sz = (uint64_t)&&sdswitch_test_exception_addr3 - (uint64_t)&&sdswitch_test_exception_addr2;
+  src = (uint8_t *)&&sdswitch_test_exception_addr2;
+  dst = (uint8_t *)dst_cell;
+  for(int i = 0; i < sz; i++)
+    dst[i] = src[i];
+  prot(dst_cell, RT_R);
+  /* Jump to the copy of this function, exception since SDEntry not executable for target */
+  tgt_usid = 2;
+  tgt_addr = expected_stval = dst_cell;
+  handler_ack = 0;
+  trap_mistakes = 0;
+  jalrs(ra, tgt_usid, tgt_addr);
+sdswitch_test_exception_addr2:
+  entry(_sdswitch_test_exception_addr2);
+  nop(5);
+sdswitch_test_exception_addr3:
   CHECK(!trap_mistakes && (handler_ack == SDSWITCH_HANDLER_ACK_SPECIAL));
 
   return mistakes;
